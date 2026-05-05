@@ -1,0 +1,5 @@
+python-osc
+pyautogui
+PySide6
+pytest
+pyinstaller
