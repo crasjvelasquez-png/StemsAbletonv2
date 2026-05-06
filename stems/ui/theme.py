@@ -3,27 +3,29 @@ from __future__ import annotations
 import re
 
 DESIGN_TOKENS = {
-    "bg_top": "#202a33",
-    "bg_mid": "#17212b",
-    "bg_bottom": "#111923",
-    "panel": "rgba(38, 51, 63, 0.48)",
-    "panel_soft": "rgba(33, 45, 56, 0.40)",
-    "panel_hover": "rgba(54, 70, 84, 0.38)",
-    "field": "rgba(18, 27, 36, 0.58)",
-    "field_hover": "rgba(28, 39, 50, 0.68)",
-    "border": "rgba(219, 235, 255, 0.095)",
-    "border_strong": "rgba(219, 235, 255, 0.16)",
-    "separator": "rgba(219, 235, 255, 0.075)",
+    "bg_top": "#22252e",
+    "bg_mid": "#1e2129",
+    "bg_bottom": "#1a1d24",
+    "panel": "rgba(35, 38, 50, 0.48)",
+    "panel_soft": "rgba(30, 33, 44, 0.40)",
+    "panel_hover": "rgba(50, 54, 68, 0.38)",
+    "field": "rgba(24, 27, 36, 0.58)",
+    "field_hover": "rgba(32, 36, 48, 0.68)",
+    "border": "rgba(220, 230, 255, 0.10)",
+    "border_strong": "rgba(220, 230, 255, 0.18)",
+    "separator": "rgba(220, 230, 255, 0.08)",
     "text": "rgba(244, 248, 252, 0.90)",
     "text_strong": "rgba(250, 252, 255, 0.96)",
     "text_muted": "rgba(221, 231, 242, 0.58)",
     "text_faint": "rgba(221, 231, 242, 0.38)",
-    "accent": "#6db8ff",
-    "accent_hover": "#83c5ff",
-    "accent_pressed": "#509ce9",
+    "accent": "#7cc4f0",
+    "accent_hover": "#8dd0f5",
+    "accent_pressed": "#6ab8e8",
     "success": "#72e39d",
-    "warning": "#f2cf67",
-    "danger": "#ff7a86",
+    "warning": "#f5d56e",
+    "danger": "#e85d5d",
+    "accent_text": "#071522",
+    "menu": "#1e2129",
     "radius_panel": "10px",
     "radius_control": "8px",
     "radius_pill": "11px",
@@ -132,7 +134,7 @@ QLineEdit {{
     padding: 7px 10px;
     color: {DESIGN_TOKENS["text_strong"]};
     selection-background-color: {DESIGN_TOKENS["accent"]};
-    selection-color: #08121c;
+    selection-color: {DESIGN_TOKENS["accent_text"]};
     font-size: 13px;
 }}
 
@@ -142,13 +144,13 @@ QLineEdit:hover {{
 }}
 
 QLineEdit:focus {{
-    border: 1px solid rgba(105, 180, 255, 0.72);
+    border: 1px solid rgba(124, 196, 240, 0.72);
 }}
 
 QLineEdit:disabled {{
-    background-color: rgba(18, 27, 36, 0.22);
+    background-color: rgba(24, 27, 36, 0.22);
     color: {DESIGN_TOKENS["text_faint"]};
-    border-color: rgba(219, 235, 255, 0.06);
+    border-color: rgba(220, 230, 255, 0.06);
 }}
 
 QLineEdit#exportInput,
@@ -174,20 +176,20 @@ QComboBox:hover {{
 }}
 
 QComboBox:focus {{
-    border: 1px solid rgba(105, 180, 255, 0.72);
+    border: 1px solid rgba(124, 196, 240, 0.72);
 }}
 
 QComboBox:disabled {{
-    background-color: rgba(18, 27, 36, 0.22);
+    background-color: rgba(24, 27, 36, 0.22);
     color: {DESIGN_TOKENS["text_faint"]};
-    border-color: rgba(219, 235, 255, 0.06);
+    border-color: rgba(220, 230, 255, 0.06);
 }}
 
 QComboBox::drop-down {{
     subcontrol-origin: padding;
     subcontrol-position: top right;
     width: 28px;
-    border-left: 1px solid rgba(219, 235, 255, 0.08);
+    border-left: 1px solid rgba(220, 230, 255, 0.08);
 }}
 
 QComboBox::down-arrow {{
@@ -201,10 +203,10 @@ QComboBox::down-arrow {{
 }}
 
 QComboBox QAbstractItemView {{
-    background-color: #24313c;
+    background-color: {DESIGN_TOKENS["menu"]};
     border: 1px solid {DESIGN_TOKENS["border_strong"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    selection-background-color: rgba(105, 180, 255, 0.22);
+    selection-background-color: rgba(124, 196, 240, 0.22);
     selection-color: {DESIGN_TOKENS["text_strong"]};
     padding: 5px;
     outline: none;
@@ -229,14 +231,14 @@ QPushButton:hover {{
 }}
 
 QPushButton:pressed {{
-    background-color: rgba(18, 27, 36, 0.68);
-    border-color: rgba(105, 180, 255, 0.24);
+    background-color: rgba(24, 27, 36, 0.68);
+    border-color: rgba(124, 196, 240, 0.24);
 }}
 
 QPushButton:disabled {{
-    background-color: rgba(28, 39, 50, 0.24);
+    background-color: rgba(32, 36, 48, 0.24);
     color: {DESIGN_TOKENS["text_faint"]};
-    border-color: rgba(219, 235, 255, 0.055);
+    border-color: rgba(220, 230, 255, 0.055);
 }}
 
 QPushButton#primaryAction {{
@@ -245,33 +247,33 @@ QPushButton#primaryAction {{
         stop: 0 {DESIGN_TOKENS["accent_hover"]},
         stop: 1 {DESIGN_TOKENS["accent_pressed"]}
     );
-    color: #06111d;
-    border: 1px solid rgba(185, 222, 255, 0.62);
+    color: {DESIGN_TOKENS["accent_text"]};
+    border: 1px solid rgba(196, 232, 255, 0.62);
     font-weight: 600;
 }}
 
 QPushButton#primaryAction:hover {{
     background-color: qlineargradient(
         x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 #9bd0ff,
-        stop: 1 #5eabf6
+        stop: 0 #a1dcfb,
+        stop: 1 {DESIGN_TOKENS["accent"]}
     );
-    border-color: rgba(220, 240, 255, 0.72);
+    border-color: rgba(220, 244, 255, 0.72);
 }}
 
 QPushButton#primaryAction:pressed {{
     background-color: {DESIGN_TOKENS["accent_pressed"]};
-    border-color: rgba(105, 180, 255, 0.58);
+    border-color: rgba(124, 196, 240, 0.58);
 }}
 
 QPushButton#primaryAction:disabled {{
-    background-color: rgba(105, 180, 255, 0.20);
+    background-color: rgba(124, 196, 240, 0.20);
     color: rgba(230, 244, 255, 0.44);
-    border-color: rgba(105, 180, 255, 0.16);
+    border-color: rgba(124, 196, 240, 0.16);
 }}
 
 QPushButton#secondary {{
-    background-color: rgba(34, 47, 59, 0.44);
+    background-color: rgba(34, 37, 49, 0.44);
     color: {DESIGN_TOKENS["text"]};
     border-color: {DESIGN_TOKENS["border"]};
 }}
@@ -286,50 +288,50 @@ QPushButton[actionBarButton="true"] {{
 }}
 
 QPushButton#primaryAction[actionBarButton="true"] {{
-    background-color: #5da9f2;
-    color: #071522;
-    border-color: rgba(190, 224, 255, 0.46);
+    background-color: {DESIGN_TOKENS["accent"]};
+    color: {DESIGN_TOKENS["accent_text"]};
+    border-color: rgba(196, 232, 255, 0.46);
     font-weight: 600;
 }}
 
 QPushButton#primaryAction[actionBarButton="true"]:hover {{
-    background-color: #6eb6fa;
-    border-color: rgba(220, 240, 255, 0.58);
+    background-color: {DESIGN_TOKENS["accent_hover"]};
+    border-color: rgba(220, 244, 255, 0.58);
 }}
 
 QPushButton#primaryAction[actionBarButton="true"]:pressed {{
-    background-color: #438bd3;
-    border-color: rgba(155, 208, 255, 0.54);
+    background-color: {DESIGN_TOKENS["accent_pressed"]};
+    border-color: rgba(160, 218, 252, 0.54);
 }}
 
 QPushButton#primaryAction[actionBarButton="true"]:disabled {{
-    background-color: rgba(105, 180, 255, 0.16);
+    background-color: rgba(124, 196, 240, 0.16);
     color: rgba(230, 244, 255, 0.42);
-    border-color: rgba(105, 180, 255, 0.22);
+    border-color: rgba(124, 196, 240, 0.22);
 }}
 
 QPushButton#secondary[actionBarButton="true"] {{
-    background-color: rgba(22, 32, 42, 0.22);
+    background-color: rgba(22, 24, 32, 0.22);
     color: rgba(244, 248, 252, 0.78);
-    border-color: rgba(219, 235, 255, 0.105);
+    border-color: rgba(220, 230, 255, 0.105);
     font-weight: 500;
 }}
 
 QPushButton#secondary[actionBarButton="true"]:hover {{
-    background-color: rgba(45, 60, 74, 0.40);
+    background-color: rgba(50, 54, 68, 0.40);
     color: {DESIGN_TOKENS["text_strong"]};
-    border-color: rgba(219, 235, 255, 0.20);
+    border-color: rgba(220, 230, 255, 0.20);
 }}
 
 QPushButton#secondary[actionBarButton="true"]:pressed {{
-    background-color: rgba(18, 27, 36, 0.54);
-    border-color: rgba(105, 180, 255, 0.22);
+    background-color: rgba(24, 27, 36, 0.54);
+    border-color: rgba(124, 196, 240, 0.22);
 }}
 
 QPushButton#secondary[actionBarButton="true"]:disabled {{
     background-color: rgba(16, 24, 32, 0.24);
     color: rgba(221, 231, 242, 0.42);
-    border-color: rgba(219, 235, 255, 0.13);
+    border-color: rgba(220, 230, 255, 0.13);
 }}
 
 QPushButton#headerAction {{
@@ -347,7 +349,7 @@ QPushButton#headerAction {{
 }}
 
 QPushButton#headerAction:hover {{
-    background-color: rgba(219, 235, 255, 0.055);
+    background-color: rgba(220, 230, 255, 0.055);
     color: {DESIGN_TOKENS["text"]};
 }}
 
@@ -357,8 +359,8 @@ QWidget#detectedStemsSection {{
 }}
 
 QWidget#stemListPanel {{
-    background-color: rgba(36, 49, 60, 0.34);
-    border: 1px solid rgba(219, 235, 255, 0.105);
+    background-color: rgba(35, 38, 50, 0.34);
+    border: 1px solid rgba(220, 230, 255, 0.105);
     border-radius: {DESIGN_TOKENS["radius_panel"]};
 }}
 
@@ -380,12 +382,12 @@ QWidget#stemTrackRowContent {{
 }}
 
 QWidget#stemTrackRowContent:hover {{
-    background-color: rgba(219, 235, 255, 0.035);
+    background-color: rgba(220, 230, 255, 0.035);
 }}
 
 QFrame#stemTrackRowSeparator {{
-    color: rgba(219, 235, 255, 0.095);
-    background-color: rgba(219, 235, 255, 0.095);
+    color: rgba(220, 230, 255, 0.095);
+    background-color: rgba(220, 230, 255, 0.095);
     border: none;
     max-height: 1px;
 }}
@@ -435,15 +437,15 @@ QLabel#stemRowStatus[statusState="failed"] {{
 
 /* Progress */
 QWidget#progressStatusModule {{
-    background-color: rgba(18, 27, 36, 0.28);
+    background-color: rgba(24, 27, 36, 0.28);
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
 }}
 
 QWidget#progressStatusModule[progressState="scan-failed"],
 QWidget#progressStatusModule[progressState="export-failed"] {{
-    background-color: rgba(255, 122, 134, 0.035);
-    border-color: rgba(255, 122, 134, 0.20);
+    background-color: rgba(232, 93, 93, 0.045);
+    border-color: rgba(232, 93, 93, 0.22);
 }}
 
 QWidget#progressStatusModule[progressState="export-complete"] {{
@@ -452,13 +454,13 @@ QWidget#progressStatusModule[progressState="export-complete"] {{
 
 QWidget#progressStatusModule[progressState="cancelling"],
 QWidget#progressStatusModule[progressState="cancelled"] {{
-    border-color: rgba(242, 207, 103, 0.18);
+    border-color: rgba(245, 213, 110, 0.20);
 }}
 
 QLabel#progressStatusIcon {{
     color: {DESIGN_TOKENS["text_muted"]};
-    background-color: rgba(219, 235, 255, 0.055);
-    border: 1px solid rgba(219, 235, 255, 0.13);
+    background-color: rgba(220, 230, 255, 0.055);
+    border: 1px solid rgba(220, 230, 255, 0.13);
     border-radius: 13px;
     font-size: 12px;
     font-weight: 600;
@@ -468,8 +470,8 @@ QLabel#progressStatusIcon[progressState="scanning"],
 QLabel#progressStatusIcon[progressState="export-starting"],
 QLabel#progressStatusIcon[progressState="export-in-progress"] {{
     color: {DESIGN_TOKENS["accent"]};
-    background-color: rgba(105, 180, 255, 0.08);
-    border-color: rgba(105, 180, 255, 0.34);
+    background-color: rgba(124, 196, 240, 0.08);
+    border-color: rgba(124, 196, 240, 0.34);
 }}
 
 QLabel#progressStatusIcon[progressState="export-complete"] {{
@@ -481,15 +483,15 @@ QLabel#progressStatusIcon[progressState="export-complete"] {{
 QLabel#progressStatusIcon[progressState="scan-failed"],
 QLabel#progressStatusIcon[progressState="export-failed"] {{
     color: {DESIGN_TOKENS["danger"]};
-    background-color: rgba(255, 122, 134, 0.08);
-    border-color: rgba(255, 122, 134, 0.38);
+    background-color: rgba(232, 93, 93, 0.08);
+    border-color: rgba(232, 93, 93, 0.38);
 }}
 
 QLabel#progressStatusIcon[progressState="cancelling"],
 QLabel#progressStatusIcon[progressState="cancelled"] {{
     color: {DESIGN_TOKENS["warning"]};
-    background-color: rgba(242, 207, 103, 0.08);
-    border-color: rgba(242, 207, 103, 0.30);
+    background-color: rgba(245, 213, 110, 0.08);
+    border-color: rgba(245, 213, 110, 0.30);
 }}
 
 QLabel#progressStatePill {{
@@ -546,8 +548,8 @@ QLabel#progressPercent[progressState="export-failed"] {{
 }}
 
 QProgressBar#progressBar {{
-    background-color: rgba(219, 235, 255, 0.10);
-    border: 1px solid rgba(219, 235, 255, 0.075);
+    background-color: rgba(220, 230, 255, 0.10);
+    border: 1px solid rgba(220, 230, 255, 0.075);
     border-radius: 3px;
     color: transparent;
     min-height: 4px;
@@ -564,7 +566,7 @@ QProgressBar#progressBar::chunk {{
 }}
 
 QProgressBar#progressBar[progressState="idle"]::chunk {{
-    background-color: rgba(219, 235, 255, 0.24);
+    background-color: rgba(220, 230, 255, 0.24);
 }}
 
 QProgressBar#progressBar[progressState="export-complete"]::chunk {{
@@ -573,7 +575,7 @@ QProgressBar#progressBar[progressState="export-complete"]::chunk {{
 
 QProgressBar#progressBar[progressState="scan-failed"]::chunk,
 QProgressBar#progressBar[progressState="export-failed"]::chunk {{
-    background-color: rgba(255, 122, 134, 0.74);
+    background-color: rgba(232, 93, 93, 0.74);
 }}
 
 QProgressBar#progressBar[progressState="cancelling"]::chunk,
@@ -609,28 +611,28 @@ QCheckBox::indicator {{
     width: 17px;
     height: 17px;
     border-radius: 9px;
-    border: 1px solid rgba(105, 180, 255, 0.62);
-    background-color: rgba(105, 180, 255, 0.05);
+    border: 1px solid rgba(124, 196, 240, 0.62);
+    background-color: rgba(124, 196, 240, 0.05);
 }}
 
 QCheckBox::indicator:hover {{
-    border-color: rgba(151, 207, 255, 0.78);
-    background-color: rgba(105, 180, 255, 0.11);
+    border-color: rgba(161, 220, 251, 0.78);
+    background-color: rgba(124, 196, 240, 0.11);
 }}
 
 QCheckBox::indicator:checked {{
-    background-color: rgba(105, 180, 255, 0.22);
+    background-color: rgba(124, 196, 240, 0.22);
     border-color: {DESIGN_TOKENS["accent"]};
 }}
 
 QCheckBox::indicator:disabled {{
-    border-color: rgba(219, 235, 255, 0.13);
-    background-color: rgba(219, 235, 255, 0.04);
+    border-color: rgba(220, 230, 255, 0.13);
+    background-color: rgba(220, 230, 255, 0.04);
 }}
 
 QCheckBox#stemRowCheckbox {{
-    background-color: rgba(105, 180, 255, 0.10);
-    border: 1px solid rgba(109, 184, 255, 0.74);
+    background-color: rgba(124, 196, 240, 0.10);
+    border: 1px solid rgba(124, 196, 240, 0.74);
     border-radius: 11px;
     color: {DESIGN_TOKENS["accent_hover"]};
     font-size: 13px;
@@ -641,13 +643,13 @@ QCheckBox#stemRowCheckbox {{
 }}
 
 QCheckBox#stemRowCheckbox:hover {{
-    background-color: rgba(105, 180, 255, 0.15);
-    border-color: rgba(151, 207, 255, 0.86);
+    background-color: rgba(124, 196, 240, 0.15);
+    border-color: rgba(161, 220, 251, 0.86);
 }}
 
 QCheckBox#stemRowCheckbox:unchecked {{
     background-color: transparent;
-    border-color: rgba(109, 184, 255, 0.46);
+    border-color: rgba(124, 196, 240, 0.46);
     color: transparent;
 }}
 
@@ -660,7 +662,7 @@ QCheckBox#stemRowCheckbox::indicator {{
 
 /* Menus and dialogs */
 QMenu {{
-    background-color: #24313c;
+    background-color: {DESIGN_TOKENS["menu"]};
     border: 1px solid {DESIGN_TOKENS["border_strong"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
     padding: 5px;
@@ -675,7 +677,7 @@ QMenu::item {{
 }}
 
 QMenu::item:selected {{
-    background-color: rgba(105, 180, 255, 0.20);
+    background-color: rgba(124, 196, 240, 0.20);
     color: {DESIGN_TOKENS["text_strong"]};
 }}
 
@@ -691,13 +693,13 @@ QScrollBar:vertical {{
 }}
 
 QScrollBar::handle:vertical {{
-    background-color: rgba(219, 235, 255, 0.16);
+    background-color: rgba(220, 230, 255, 0.16);
     border-radius: 4px;
     min-height: 30px;
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background-color: rgba(219, 235, 255, 0.26);
+    background-color: rgba(220, 230, 255, 0.26);
 }}
 
 QScrollBar::add-line:vertical,
@@ -709,11 +711,6 @@ QScrollBar::sub-line:vertical {{
 
 def _compact_stylesheet() -> str:
     replacements = [
-        ("font-size: 12px;", "font-size: 10px;"),
-        ("font-size: 13px;", "font-size: 11px;"),
-        ("font-size: 14px;", "font-size: 12px;"),
-        ("font-size: 15px;", "font-size: 12px;"),
-        ("font-size: 16px;", "font-size: 13px;"),
         ("padding: 7px 10px;", "padding: 5px 8px;"),
         ("padding: 8px 16px;", "padding: 5px 10px;"),
         ("padding: 0 16px;", "padding: 0 10px;"),

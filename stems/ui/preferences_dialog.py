@@ -18,7 +18,7 @@ except ImportError as exc:
 
 from ..naming import render_name, stem_file_name, stems_folder_name
 from ..preferences import Preferences
-from .theme import stylesheet_for_scale
+from .theme import DESIGN_TOKENS, stylesheet_for_scale
 
 
 TOKEN_HELP = (
@@ -85,7 +85,9 @@ class PreferencesDialog(QDialog):
         self.stem_name_format.textChanged.connect(self._update_preview)
 
         stem_token_hint = QLabel(TOKEN_HELP)
-        stem_token_hint.setStyleSheet("color: #888; font-size: 11px;")
+        stem_token_hint.setStyleSheet(
+            f"color: {DESIGN_TOKENS['text_muted']}; font-size: 13px;"
+        )
 
         folder_label = QLabel("Output folder name format")
         folder_label.setStyleSheet("font-weight: bold;")
@@ -94,12 +96,15 @@ class PreferencesDialog(QDialog):
         self.folder_name_format.textChanged.connect(self._update_preview)
 
         folder_token_hint = QLabel(TOKEN_HELP)
-        folder_token_hint.setStyleSheet("color: #888; font-size: 11px;")
+        folder_token_hint.setStyleSheet(
+            f"color: {DESIGN_TOKENS['text_muted']}; font-size: 13px;"
+        )
 
         self.preview_label = QLabel()
         self.preview_label.setStyleSheet(
-            "background: #1e1e1e; color: #ccc; padding: 10px; border-radius: 4px;"
-            "font-family: monospace; font-size: 12px;"
+            f"background: {DESIGN_TOKENS['field']}; color: {DESIGN_TOKENS['text']}; "
+            "padding: 10px; border-radius: 4px; font-family: monospace; "
+            "font-size: 14px;"
         )
         self.preview_label.setWordWrap(True)
         self.preview_label.setMinimumHeight(60)

@@ -57,7 +57,7 @@ UI_BASE_SIZES = {
     "window_default": REFERENCE_WINDOW_SIZE,
     "window_margins": (16, 8, 16, 16),
     "window_spacing": 12,
-    "header_button": 22,
+    "header_button": 36,
     "current_value_height": 18,
     "current_label_width": 64,
     "current_row_spacing": 18,
@@ -602,7 +602,7 @@ class MainWindow(QMainWindow):
         shadow = QGraphicsDropShadowEffect(widget)
         shadow.setBlurRadius(int(self.ui_sizes["shadow_blur"]))
         shadow.setOffset(0, int(self.ui_sizes["shadow_offset"]))
-        shadow.setColor(QColor(0, 0, 0, 58))
+        shadow.setColor(QColor(10, 12, 18, 72))
         widget.setGraphicsEffect(shadow)
         self.panel_shadow_widgets.append(widget)
 
