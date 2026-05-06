@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Icon caches
+Icon?
+Icon\r
+
+# Thumbnails
+._*
+
+# Files that might appear on external media
+.Spotlight-V100
+.Trashes
+
+# Exchange mail files
+__MCPASSWD*
+ehthumbs.db
+Thumbs.db
+
+# Local network shares
+.AppleDB
+.AppleDesktop
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Build outputs
+build/
+dist/
+*.spec.bak

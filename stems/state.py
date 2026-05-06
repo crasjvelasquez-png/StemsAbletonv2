@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from .detection import find_bus_tracks
 from .models import ExportJob, ProjectContext, StemTrack
+from .naming import stems_folder_name
 from .project import get_project_info, get_stems_folder
 
 
@@ -23,10 +26,19 @@ class AppState:
         self.project = ProjectContext(song_name=song_name, project_folder=project_folder, bpm=bpm)
         return self.project, self.detected_tracks
 
-    def build_export_job(self, key: str | None = None, replace_mode: str = "replace") -> ExportJob:
+    def build_export_job(
+        self,
+        key: str | None = None,
+        replace_mode: str = "replace",
+        destination_root: str | Path | None = None,
+    ) -> ExportJob:
         if self.project is None:
             raise RuntimeError("scan_current_set() must run before build_export_job().")
-        stems_dir = self.stems_folder_getter(self.project.project_folder, self.project.song_name, key, self.project.bpm)
+        if destination_root is None:
+            stems_dir = self.stems_folder_getter(self.project.project_folder, self.project.song_name, key, self.project.bpm)
+        else:
+            stems_dir = Path(destination_root) / stems_folder_name(self.project.song_name, key, self.project.bpm)
+            stems_dir.mkdir(parents=True, exist_ok=True)
         return ExportJob(
             song_name=self.project.song_name,
             project_folder=self.project.project_folder,

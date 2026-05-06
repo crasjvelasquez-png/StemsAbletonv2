@@ -5,7 +5,9 @@ from pathlib import Path
 
 root = Path(SPECPATH)
 
-datas = []
+datas = [
+    (str(root / "assets/logo/stems-tower.png"), "assets/logo"),
+]
 hiddenimports = [
     "PySide6.QtCore",
     "PySide6.QtGui",
@@ -60,7 +62,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="Stems.app",
-    icon=None,
+    icon=str(root / "assets/logo/stems-tower.icns"),
     bundle_identifier="com.c4milo.stems",
     info_plist={
         "CFBundleDisplayName": "Stems",

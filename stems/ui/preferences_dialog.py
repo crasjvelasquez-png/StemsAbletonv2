@@ -14,16 +14,23 @@ except ImportError as exc:
     raise SystemExit("PySide6 is not installed. Run: pip install PySide6") from exc
 
 from ..preferences import Preferences
+from .theme import DARK_STYLESHEET
 
 
 class PreferencesDialog(QDialog):
     def __init__(self, preferences: Preferences, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferences")
+        self.setMinimumWidth(420)
+        self.setStyleSheet(DARK_STYLESHEET)
         self.preferences = preferences
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 22, 22, 18)
+        layout.setSpacing(18)
         form = QFormLayout()
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(12)
 
         self.default_key = QLineEdit(preferences.default_key)
         self.replace_mode = QComboBox()

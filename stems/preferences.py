@@ -22,6 +22,7 @@ class RecentExport:
 class Preferences:
     default_key: str = ""
     replace_mode: str = "replace"
+    export_destination_root: str = ""
     auto_open_folder: bool = True
     menubar_mode: bool = False
     launch_at_login: bool = False
