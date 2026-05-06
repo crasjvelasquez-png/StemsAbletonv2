@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import stems.project as project
+from stems.errors import ProjectDetectionError
 
 
 def test_get_project_info_uses_latest_candidate(tmp_path):
@@ -43,6 +44,40 @@ def test_get_project_info_falls_back_to_ableton_live_process_name(tmp_path):
     folder, song_name = project.get_project_info(runner=runner)
     assert folder == candidate.parent
     assert song_name == "Song"
+
+
+def test_get_project_info_uses_backup_candidate_to_find_project(tmp_path):
+    project_file = tmp_path / "Song Project" / "Song.als"
+    backup_file = tmp_path / "Song Project" / "Backup" / "Song [2026-05-05 200637].als"
+    project_file.parent.mkdir(parents=True)
+    backup_file.parent.mkdir(parents=True)
+    project_file.write_text("x")
+    backup_file.write_text("backup")
+
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(stdout="Song.als\n", returncode=0, stderr="")
+        if command[0] == "mdfind":
+            return SimpleNamespace(stdout=f"{backup_file}\n", returncode=0, stderr="")
+        raise AssertionError(command)
+
+    folder, song_name = project.get_project_info(runner=runner)
+    assert folder == project_file.parent
+    assert song_name == "Song"
+
+
+def test_get_project_info_includes_window_title_error_detail():
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(stdout="", returncode=1, stderr="not authorized for assistive access")
+        raise AssertionError(command)
+
+    try:
+        project.get_project_info(runner=runner)
+    except ProjectDetectionError as exc:
+        assert "not authorized for assistive access" in str(exc)
+    else:
+        raise AssertionError("Expected ProjectDetectionError")
 
 
 def test_rename_old_stems_folders_renames_legacy_folder(tmp_path):

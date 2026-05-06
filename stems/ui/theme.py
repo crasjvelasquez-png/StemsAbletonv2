@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 DESIGN_TOKENS = {
     "bg_top": "#202a33",
     "bg_mid": "#17212b",
@@ -703,3 +705,54 @@ QScrollBar::sub-line:vertical {{
     height: 0px;
 }}
 """
+
+
+def _compact_stylesheet() -> str:
+    replacements = [
+        ("font-size: 12px;", "font-size: 10px;"),
+        ("font-size: 13px;", "font-size: 11px;"),
+        ("font-size: 14px;", "font-size: 12px;"),
+        ("font-size: 15px;", "font-size: 12px;"),
+        ("font-size: 16px;", "font-size: 13px;"),
+        ("padding: 7px 10px;", "padding: 5px 8px;"),
+        ("padding: 8px 16px;", "padding: 5px 10px;"),
+        ("padding: 0 16px;", "padding: 0 10px;"),
+        ("padding: 6px 22px;", "padding: 4px 16px;"),
+        ("min-height: 32px;", "min-height: 26px;"),
+        ("min-height: 34px;", "min-height: 28px;"),
+        ("max-height: 34px;", "max-height: 28px;"),
+        ("min-width: 124px;", "min-width: 100px;"),
+        ("width: 28px;", "width: 22px;"),
+        ("margin-right: 9px;", "margin-right: 7px;"),
+        ("border-radius: 6px;", "border-radius: 5px;"),
+        ("border-radius: 7px;", "border-radius: 6px;"),
+        ("border-radius: 8px;", "border-radius: 6px;"),
+        ("border-radius: 9px;", "border-radius: 7px;"),
+        ("border-radius: 10px;", "border-radius: 8px;"),
+        ("border-radius: 11px;", "border-radius: 9px;"),
+        ("border-radius: 13px;", "border-radius: 10px;"),
+        ("width: 17px;", "width: 14px;"),
+        ("height: 17px;", "height: 14px;"),
+        ("padding-left: 4px;", "padding-left: 3px;"),
+        ("padding: 5px;", "padding: 4px;"),
+        ("min-width: 82px;", "min-width: 68px;"),
+        ("width: 8px;", "width: 6px;"),
+        ("min-height: 30px;", "min-height: 24px;"),
+    ]
+    stylesheet = DARK_STYLESHEET
+    for old, new in replacements:
+        stylesheet = stylesheet.replace(old, new)
+    return stylesheet
+
+
+BASE_STYLESHEET = _compact_stylesheet()
+
+
+def stylesheet_for_scale(scale: float) -> str:
+    def replace_px(match: re.Match[str]) -> str:
+        value = int(match.group(1))
+        if value == 0:
+            return "0px"
+        return f"{max(1, round(value * scale))}px"
+
+    return re.sub(r"(\d+)px", replace_px, BASE_STYLESHEET)

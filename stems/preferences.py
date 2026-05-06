@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
+from typing import get_type_hints
 from pathlib import Path
 
 
@@ -18,9 +19,12 @@ class RecentExport:
     summary: str
 
 
+DEFAULT_STEM_NAME_FORMAT = "{song}_{track} - {key} {bpm} BPM.wav"
+DEFAULT_FOLDER_NAME_FORMAT = "{song} - {date} - Stems - {key} {bpm} BPM"
+
+
 @dataclass
 class Preferences:
-    default_key: str = ""
     replace_mode: str = "replace"
     export_destination_root: str = ""
     auto_open_folder: bool = True
@@ -30,6 +34,8 @@ class Preferences:
     sticky_panel_position: bool = True
     panel_x: int | None = None
     panel_y: int | None = None
+    stem_name_format: str = DEFAULT_STEM_NAME_FORMAT
+    folder_name_format: str = DEFAULT_FOLDER_NAME_FORMAT
     recent_exports: list[RecentExport] = field(default_factory=list)
 
 
@@ -43,6 +49,7 @@ class PreferencesStore:
         data = json.loads(self.path.read_text())
         recent = [RecentExport(**item) for item in data.get("recent_exports", [])]
         data["recent_exports"] = recent
+        data = {key: value for key, value in data.items() if key in get_type_hints(Preferences)}
         return Preferences(**data)
 
     def save(self, preferences: Preferences) -> None:

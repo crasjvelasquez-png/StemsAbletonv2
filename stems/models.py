@@ -34,6 +34,9 @@ class ExportJob:
     bpm: int | float | None = None
     key: str | None = None
     replace_mode: ReplaceMode = "replace"
+    custom_song_name: str | None = None
+    stem_name_format: str | None = None
+    folder_name_format: str | None = None
 
     @property
     def selected_tracks(self) -> list[StemTrack]:

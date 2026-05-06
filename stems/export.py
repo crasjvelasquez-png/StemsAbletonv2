@@ -8,7 +8,7 @@ from typing import Callable
 from .automation import find_ableton_app_path, osascript, wait_for_live_window
 from .errors import DependencyError, ExportAutomationError
 from .models import ExportItemResult, ExportJob, ExportResult
-from .naming import escape_applescript
+from .naming import escape_applescript, stem_file_name
 from .preflight import run_export_preflight
 
 
@@ -260,7 +260,14 @@ def execute_export_job(
 
     try:
         for position, track in enumerate(tracks, start=1):
-            output_path = job.stems_dir / f"{job.song_name}_{track.name}.wav"
+            output_path = job.stems_dir / stem_file_name(
+                job.custom_song_name or job.song_name,
+                track.name,
+                key=job.key,
+                bpm=job.bpm,
+                index=position,
+                format_string=job.stem_name_format,
+            )
             callback("stem", f"{position}/{len(tracks)} {track.name}")
 
             if should_cancel():

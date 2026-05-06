@@ -52,8 +52,8 @@ def test_execute_export_job_exports_selected_tracks(tmp_path):
     )
     result = execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
     assert result.success_count == 2
-    assert (tmp_path / "Song_DRUMS.wav").exists()
-    assert (tmp_path / "Song_BASS.wav").exists()
+    assert (tmp_path / "Song_DRUMS -   BPM.wav").exists()
+    assert (tmp_path / "Song_BASS -   BPM.wav").exists()
 
 
 def test_verify_exported_file_rejects_empty_files(tmp_path):

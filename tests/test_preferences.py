@@ -3,7 +3,12 @@ from stems.preferences import Preferences, PreferencesStore, RecentExport, appen
 
 def test_preferences_store_round_trip(tmp_path):
     store = PreferencesStore(tmp_path / "prefs.json")
-    prefs = Preferences(default_key="C Major", replace_mode="keep", export_destination_root="/tmp/Exports")
+    prefs = Preferences(
+        replace_mode="keep",
+        export_destination_root="/tmp/Exports",
+        stem_name_format="{song}_{track} - {key}.wav",
+        folder_name_format="{song} - {date} - Stems",
+    )
     prefs.recent_exports.append(
         RecentExport(
             song_name="Song",
@@ -15,9 +20,10 @@ def test_preferences_store_round_trip(tmp_path):
     )
     store.save(prefs)
     loaded = store.load()
-    assert loaded.default_key == "C Major"
     assert loaded.replace_mode == "keep"
     assert loaded.export_destination_root == "/tmp/Exports"
+    assert loaded.stem_name_format == "{song}_{track} - {key}.wav"
+    assert loaded.folder_name_format == "{song} - {date} - Stems"
     assert loaded.recent_exports[0].song_name == "Song"
 
 

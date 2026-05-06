@@ -31,13 +31,21 @@ class AppState:
         key: str | None = None,
         replace_mode: str = "replace",
         destination_root: str | Path | None = None,
+        custom_song_name: str | None = None,
+        stem_name_format: str | None = None,
+        folder_name_format: str | None = None,
     ) -> ExportJob:
         if self.project is None:
             raise RuntimeError("scan_current_set() must run before build_export_job().")
+        song = custom_song_name or self.project.song_name
         if destination_root is None:
-            stems_dir = self.stems_folder_getter(self.project.project_folder, self.project.song_name, key, self.project.bpm)
+            stems_dir = self.stems_folder_getter(
+                self.project.project_folder, song, key, self.project.bpm, format_string=folder_name_format,
+            )
         else:
-            stems_dir = Path(destination_root) / stems_folder_name(self.project.song_name, key, self.project.bpm)
+            stems_dir = Path(destination_root) / stems_folder_name(
+                song, key, self.project.bpm, format_string=folder_name_format,
+            )
             stems_dir.mkdir(parents=True, exist_ok=True)
         return ExportJob(
             song_name=self.project.song_name,
@@ -47,4 +55,7 @@ class AppState:
             bpm=self.project.bpm,
             key=key,
             replace_mode=replace_mode,
+            custom_song_name=custom_song_name,
+            stem_name_format=stem_name_format,
+            folder_name_format=folder_name_format,
         )

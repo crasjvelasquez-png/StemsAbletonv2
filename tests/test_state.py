@@ -24,7 +24,7 @@ def test_app_state_scans_and_builds_export_job(tmp_path):
     state = AppState(
         FakeAbletonClient(),
         project_info_getter=lambda: (tmp_path, "Song"),
-        stems_folder_getter=lambda folder, song, key, bpm: folder / f"{song}_{key}_{bpm}",
+        stems_folder_getter=lambda folder, song, key, bpm, **kw: folder / f"{song}_{key}_{bpm}",
     )
     project, tracks = state.scan_current_set()
     assert project.song_name == "Song"

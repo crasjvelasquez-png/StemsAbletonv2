@@ -45,6 +45,9 @@ class ExportReadyState:
         key: str | None = None,
         replace_mode: str = "replace",
         destination_root: str | Path | None = None,
+        custom_song_name: str | None = None,
+        stem_name_format: str | None = None,
+        folder_name_format: str | None = None,
     ) -> ExportJob:
         stems_root = Path(destination_root) if destination_root is not None else self.project.project_folder
         return ExportJob(
@@ -55,6 +58,9 @@ class ExportReadyState:
             bpm=self.project.bpm,
             key=key,
             replace_mode=replace_mode,
+            custom_song_name=custom_song_name,
+            stem_name_format=stem_name_format,
+            folder_name_format=folder_name_format,
         )
 
 
@@ -101,7 +107,7 @@ def test_progress_card_uses_bounded_status_components(window):
     assert window.progress_bar.objectName() == "progressBar"
     assert window.progress_bar.isTextVisible() is False
     assert window.progress_bar.height() == 6
-    assert window.progress_summary_area.maximumHeight() == 82
+    assert window.progress_summary_area.maximumHeight() == 60
     assert window.summary_label.wordWrap() is True
     assert window.summary_label.textInteractionFlags() & Qt.TextSelectableByMouse
 
@@ -137,10 +143,10 @@ def test_bottom_action_row_matches_button_hierarchy(window):
     assert window.cancel_button.objectName() == "secondary"
     assert window.export_button.objectName() == "secondary"
     assert window.export_button.isEnabled() is False
-    assert action_layout.spacing() == 22
+    assert action_layout.spacing() == 12
     assert all(button.property("actionBarButton") is True for button in buttons)
-    assert {button.minimumHeight() for button in buttons} == {38}
-    assert {button.maximumHeight() for button in buttons} == {38}
+    assert {button.minimumHeight() for button in buttons} == {30}
+    assert {button.maximumHeight() for button in buttons} == {30}
     assert window.preferences_button.objectName() == "headerAction"
     assert window.preferences_button not in buttons
 
@@ -223,7 +229,7 @@ def test_scan_failure_keeps_current_set_values_and_updates_status(window, monkey
     assert window.progress_bar.property("progressState") == "scan-failed"
     assert window.progress_percent_label.text() == "0%"
     assert window.summary_label.text() == message
-    assert window.progress_summary_area.maximumHeight() == 82
+    assert window.progress_summary_area.maximumHeight() == 60
     assert warnings == [("Scan failed", message)]
 
 
@@ -244,7 +250,7 @@ def test_export_failure_uses_error_state_with_readable_summary(window, monkeypat
     assert window.progress_icon_label.text() == "!"
     assert window.summary_label.text() == message
     assert window.summary_label.wordWrap() is True
-    assert window.progress_summary_area.maximumHeight() == 82
+    assert window.progress_summary_area.maximumHeight() == 60
     assert warnings == [("Export failed", message)]
 
 

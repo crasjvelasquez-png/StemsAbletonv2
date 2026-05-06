@@ -43,8 +43,70 @@ except ImportError as exc:
 
 from ..login_item import install_launch_agent, is_launch_agent_installed, remove_launch_agent
 from .preferences_dialog import PreferencesDialog
-from .theme import DARK_STYLESHEET
+from .theme import stylesheet_for_scale
 from .worker import ExportWorker, ScanWorker
+
+
+REFERENCE_WINDOW_SIZE = (540, 680)
+MIN_UI_SCALE = 0.5
+MAX_UI_SCALE = 2.0
+
+
+UI_BASE_SIZES = {
+    "window_min": (270, 340),
+    "window_default": REFERENCE_WINDOW_SIZE,
+    "window_margins": (16, 8, 16, 16),
+    "window_spacing": 12,
+    "header_button": 22,
+    "current_value_height": 18,
+    "current_label_width": 64,
+    "current_row_spacing": 18,
+    "section_spacing": 8,
+    "stem_panel_margins": (14, 10, 14, 10),
+    "stem_list_min_height": 140,
+    "stem_row_height": 44,
+    "stem_row_margins": (16, 0, 16, 0),
+    "stem_row_spacing": 12,
+    "stem_index_width": 30,
+    "stem_checkbox_size": 18,
+    "stem_status_width": 68,
+    "export_min_height": 170,
+    "field_height": 28,
+    "export_label_width": 78,
+    "field_spacing": 12,
+    "card_margins": (14, 10, 14, 12),
+    "card_spacing": 10,
+    "progress_margins": (14, 10, 14, 10),
+    "progress_spacing": 9,
+    "progress_header_spacing": 8,
+    "progress_module_margins": (14, 10, 14, 10),
+    "progress_module_spacing": 8,
+    "progress_icon_size": 20,
+    "progress_pill_width": 78,
+    "progress_percent_width": 34,
+    "progress_bar_height": 5,
+    "progress_summary_min_height": 34,
+    "progress_summary_max_height": 60,
+    "action_margins": (0, 8, 0, 0),
+    "action_spacing": 12,
+    "action_height": 30,
+    "shadow_blur": 20,
+    "shadow_offset": 8,
+}
+
+
+def _clamp_scale(scale: float) -> float:
+    return max(MIN_UI_SCALE, min(MAX_UI_SCALE, scale))
+
+
+def _scaled_value(value: int | tuple[int, ...], scale: float) -> int | tuple[int, ...]:
+    if isinstance(value, tuple):
+        return tuple(max(0, round(item * scale)) for item in value)
+    return max(1, round(value * scale))
+
+
+def ui_sizes_for_scale(scale: float) -> dict[str, int | tuple[int, ...]]:
+    return {key: _scaled_value(value, scale) for key, value in UI_BASE_SIZES.items()}
 
 
 def _resource_path(*parts: str) -> Path:
@@ -57,32 +119,31 @@ def _app_icon() -> QIcon:
 
 
 class StemTrackRow(QWidget):
-    ROW_HEIGHT = 64
-
-    def __init__(self, track: StemTrack, display_index: int, *, show_separator: bool = True) -> None:
+    def __init__(
+        self,
+        track: StemTrack,
+        display_index: int,
+        *,
+        sizes: dict[str, int | tuple[int, ...]] | None = None,
+        show_separator: bool = True,
+    ) -> None:
         super().__init__()
+        sizes = sizes or UI_BASE_SIZES
         self.setObjectName("stemTrackRow")
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setMinimumHeight(self.ROW_HEIGHT)
-        self.setMaximumHeight(self.ROW_HEIGHT)
 
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.setSpacing(0)
+        self.outer_layout = QVBoxLayout(self)
+        self.outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.outer_layout.setSpacing(0)
 
-        content = QWidget()
-        content.setObjectName("stemTrackRowContent")
-        content.setAttribute(Qt.WA_StyledBackground, True)
-        content.setMinimumHeight(self.ROW_HEIGHT - 1)
-        content.setMaximumHeight(self.ROW_HEIGHT - 1)
+        self.content = QWidget()
+        self.content.setObjectName("stemTrackRowContent")
+        self.content.setAttribute(Qt.WA_StyledBackground, True)
 
-        row_layout = QHBoxLayout(content)
-        row_layout.setContentsMargins(24, 0, 24, 0)
-        row_layout.setSpacing(18)
+        self.row_layout = QHBoxLayout(self.content)
 
         self.index_label = QLabel(str(display_index))
         self.index_label.setObjectName("stemRowIndex")
-        self.index_label.setFixedWidth(40)
         self.index_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         self.name_label = QLabel(track.name)
@@ -94,7 +155,6 @@ class StemTrackRow(QWidget):
         self.checkbox.setObjectName("stemRowCheckbox")
         self.checkbox.setChecked(track.selected)
         self.checkbox.setToolTip(f"Export {track.name}")
-        self.checkbox.setFixedSize(22, 22)
         self.checkbox.toggled.connect(self._sync_check_icon)
         self._sync_check_icon(track.selected)
 
@@ -102,12 +162,12 @@ class StemTrackRow(QWidget):
         self.status_label.setObjectName("stemRowStatus")
         self.status_label.setProperty("statusState", "detected")
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.status_label.setMinimumWidth(88)
+        self.apply_sizes(sizes)
 
-        row_layout.addWidget(self.index_label)
-        row_layout.addWidget(self.name_label, 1)
-        row_layout.addWidget(self.status_label)
-        row_layout.addWidget(self.checkbox)
+        self.row_layout.addWidget(self.index_label)
+        self.row_layout.addWidget(self.name_label, 1)
+        self.row_layout.addWidget(self.status_label)
+        self.row_layout.addWidget(self.checkbox)
 
         separator = QFrame()
         separator.setObjectName("stemTrackRowSeparator")
@@ -115,8 +175,21 @@ class StemTrackRow(QWidget):
         separator.setFrameShadow(QFrame.Plain)
         separator.setVisible(show_separator)
 
-        outer_layout.addWidget(content)
-        outer_layout.addWidget(separator)
+        self.outer_layout.addWidget(self.content)
+        self.outer_layout.addWidget(separator)
+
+    def apply_sizes(self, sizes: dict[str, int | tuple[int, ...]]) -> None:
+        row_height = int(sizes["stem_row_height"])
+        self.setMinimumHeight(row_height)
+        self.setMaximumHeight(row_height)
+        self.content.setMinimumHeight(row_height - 1)
+        self.content.setMaximumHeight(row_height - 1)
+        self.row_layout.setContentsMargins(*sizes["stem_row_margins"])
+        self.row_layout.setSpacing(int(sizes["stem_row_spacing"]))
+        self.index_label.setFixedWidth(int(sizes["stem_index_width"]))
+        checkbox_size = int(sizes["stem_checkbox_size"])
+        self.checkbox.setFixedSize(checkbox_size, checkbox_size)
+        self.status_label.setMinimumWidth(int(sizes["stem_status_width"]))
 
     def _sync_check_icon(self, checked: bool) -> None:
         self.checkbox.setText("✓" if checked else "")
@@ -128,11 +201,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Stems")
         self.setWindowIcon(_app_icon())
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        self.setMinimumSize(640, 820)
-        self.resize(700, 860)
 
         self.preferences_store = PreferencesStore()
         self.preferences = self.preferences_store.load()
+        self.ui_scale = 1.0
+        self.ui_sizes = ui_sizes_for_scale(self.ui_scale)
+        self.setMinimumSize(*self.ui_sizes["window_min"])
+        self.resize(*self.ui_sizes["window_default"])
         self.gateway = OSCGateway()
         self.gateway.start_listener()
         self.state = AppState(AbletonClient(self.gateway))
@@ -147,20 +222,29 @@ class MainWindow(QMainWindow):
         self.status_by_track_name: dict[str, QLabel] = {}
         self.tray_icon: QSystemTrayIcon | None = None
         self.export_cancel_requested = False
+        self.card_layouts: list[QVBoxLayout] = []
+        self.panel_shadow_widgets: list[QWidget] = []
+        self._ui_ready = False
+        self._startup_scan = False
 
         self._build_ui()
+        self._ui_ready = True
         self._apply_preferences_to_ui()
         self._build_tray()
-        QTimer.singleShot(0, self.scan_current_set)
+        def _auto_scan():
+            self._startup_scan = True
+            self.scan_current_set()
+
+        QTimer.singleShot(0, _auto_scan)
 
     def _build_ui(self) -> None:
-        self.setStyleSheet(DARK_STYLESHEET)
+        self.setStyleSheet(stylesheet_for_scale(self.ui_scale))
         central = QWidget(self)
         central.setObjectName("centralWidget")
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(24, 10, 24, 24)
-        layout.setSpacing(16)
+        self.window_layout = QVBoxLayout(central)
+        self.window_layout.setContentsMargins(*self.ui_sizes["window_margins"])
+        self.window_layout.setSpacing(int(self.ui_sizes["window_spacing"]))
 
         scroll_area = QScrollArea()
         scroll_area.setObjectName("mainScrollArea")
@@ -170,19 +254,20 @@ class MainWindow(QMainWindow):
 
         scroll_content = QWidget()
         scroll_content.setObjectName("mainScrollContent")
-        content_layout = QVBoxLayout(scroll_content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(16)
+        self.content_layout = QVBoxLayout(scroll_content)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(int(self.ui_sizes["window_spacing"]))
 
-        content_layout.addWidget(self._build_header_section())
-        content_layout.addWidget(self._build_current_set_section())
-        content_layout.addWidget(self._build_detected_stems_section(), 1)
-        content_layout.addWidget(self._build_export_section())
-        content_layout.addWidget(self._build_progress_section())
+        self.content_layout.addWidget(self._build_header_section())
+        self.content_layout.addWidget(self._build_current_set_section())
+        self.content_layout.addWidget(self._build_detected_stems_section(), 1)
+        self.content_layout.addWidget(self._build_export_section())
+        self.content_layout.addWidget(self._build_progress_section())
 
         scroll_area.setWidget(scroll_content)
-        layout.addWidget(scroll_area, 1)
-        layout.addLayout(self._build_action_row())
+        self.window_layout.addWidget(scroll_area, 1)
+        self.action_layout = self._build_action_row()
+        self.window_layout.addLayout(self.action_layout)
 
     def _build_header_section(self) -> QWidget:
         section = QWidget()
@@ -194,7 +279,8 @@ class MainWindow(QMainWindow):
         self.preferences_button = QPushButton("⚙")
         self.preferences_button.setObjectName("headerAction")
         self.preferences_button.setToolTip("Preferences")
-        self.preferences_button.setFixedSize(QSize(28, 28))
+        header_button = int(self.ui_sizes["header_button"])
+        self.preferences_button.setFixedSize(QSize(header_button, header_button))
         self.preferences_button.clicked.connect(self.show_preferences)
 
         layout.addStretch(1)
@@ -203,26 +289,26 @@ class MainWindow(QMainWindow):
 
     def _build_current_set_section(self) -> QWidget:
         section, body = self._build_card("Current Set")
-        body_layout = QVBoxLayout(body)
-        body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(14)
+        self.current_body_layout = QVBoxLayout(body)
+        self.current_body_layout.setContentsMargins(0, 0, 0, 0)
+        self.current_body_layout.setSpacing(int(self.ui_sizes["card_spacing"]))
 
         self.song_value = QLabel("Not scanned")
         self.song_value.setObjectName("currentSetValue")
         self.song_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.song_value.setWordWrap(True)
-        self.song_value.setMinimumHeight(22)
+        self.song_value.setMinimumHeight(int(self.ui_sizes["current_value_height"]))
         self.song_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         self.bpm_value = QLabel("-")
         self.bpm_value.setObjectName("currentSetValue")
-        self.bpm_value.setMinimumHeight(22)
+        self.bpm_value.setMinimumHeight(int(self.ui_sizes["current_value_height"]))
         self.bpm_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         self.path_value = QLabel("-")
         self.path_value.setObjectName("currentSetPathValue")
         self.path_value.setWordWrap(True)
-        self.path_value.setMinimumHeight(22)
+        self.path_value.setMinimumHeight(int(self.ui_sizes["current_value_height"]))
         self.path_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.path_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
@@ -233,8 +319,10 @@ class MainWindow(QMainWindow):
         proj_label = QLabel("Project")
         proj_label.setObjectName("currentSetLabel")
 
-        label_width = 80
-        for label in (song_label, bpm_label, proj_label):
+        self.current_set_labels = (song_label, bpm_label, proj_label)
+        self.current_rows: list[QHBoxLayout] = []
+        label_width = int(self.ui_sizes["current_label_width"])
+        for label in self.current_set_labels:
             label.setFixedWidth(label_width)
             label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
 
@@ -245,19 +333,20 @@ class MainWindow(QMainWindow):
         ):
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(28)
+            row.setSpacing(int(self.ui_sizes["current_row_spacing"]))
             row.addWidget(label)
             row.addWidget(value, 1)
-            body_layout.addLayout(row)
+            self.current_rows.append(row)
+            self.current_body_layout.addLayout(row)
 
         return section
 
     def _build_detected_stems_section(self) -> QWidget:
         section = QWidget()
         section.setObjectName("detectedStemsSection")
-        layout = QVBoxLayout(section)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        self.stems_layout = QVBoxLayout(section)
+        self.stems_layout.setContentsMargins(0, 0, 0, 0)
+        self.stems_layout.setSpacing(int(self.ui_sizes["section_spacing"]))
 
         title_label = QLabel("Detected Stems (List View)")
         title_label.setObjectName("cardTitle")
@@ -265,50 +354,59 @@ class MainWindow(QMainWindow):
         list_panel = QWidget()
         list_panel.setObjectName("stemListPanel")
         list_panel.setAttribute(Qt.WA_StyledBackground, True)
-        panel_layout = QVBoxLayout(list_panel)
-        panel_layout.setContentsMargins(22, 16, 22, 16)
-        panel_layout.setSpacing(0)
+        self.stem_panel_layout = QVBoxLayout(list_panel)
+        self.stem_panel_layout.setContentsMargins(*self.ui_sizes["stem_panel_margins"])
+        self.stem_panel_layout.setSpacing(0)
 
         self.track_list = QListWidget()
         self.track_list.setObjectName("stemTrackList")
         self.track_list.setSelectionMode(QAbstractItemView.NoSelection)
-        self.track_list.setMinimumHeight(198)
-        panel_layout.addWidget(self.track_list)
+        self.track_list.setMinimumHeight(int(self.ui_sizes["stem_list_min_height"]))
+        self.stem_panel_layout.addWidget(self.track_list)
 
-        layout.addWidget(title_label)
-        layout.addWidget(list_panel, 1)
+        self.stems_layout.addWidget(title_label)
+        self.stems_layout.addWidget(list_panel, 1)
         return section
 
     def _build_export_section(self) -> QWidget:
         section, body = self._build_card("Export")
-        section.setMinimumHeight(230)
-        options_layout = QVBoxLayout(body)
-        options_layout.setContentsMargins(0, 0, 0, 0)
-        options_layout.setSpacing(14)
+        self.export_section = section
+        section.setMinimumHeight(int(self.ui_sizes["export_min_height"]))
+        self.export_options_layout = QVBoxLayout(body)
+        self.export_options_layout.setContentsMargins(0, 0, 0, 0)
+        self.export_options_layout.setSpacing(int(self.ui_sizes["card_spacing"]))
+
+        self.project_name_input = QLineEdit()
+        self.project_name_input.setObjectName("exportInput")
+        self.project_name_input.setPlaceholderText("Override song name")
+        self.project_name_input.setMinimumHeight(int(self.ui_sizes["field_height"]))
+        self.project_name_input.textChanged.connect(self.update_destination_preview)
 
         self.key_input = QLineEdit()
         self.key_input.setObjectName("exportInput")
         self.key_input.setPlaceholderText("Optional key, e.g. F# Minor")
-        self.key_input.setMinimumHeight(36)
+        self.key_input.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.key_input.textChanged.connect(self.update_destination_preview)
         self.replace_mode = QComboBox()
         self.replace_mode.setObjectName("exportInput")
         self.replace_mode.addItem("Replace existing files", "replace")
         self.replace_mode.addItem("Skip existing files", "keep")
-        self.replace_mode.setMinimumHeight(36)
+        self.replace_mode.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.replace_mode.currentIndexChanged.connect(self.update_destination_preview)
 
         self.destination_value = QLabel("-")
         self.destination_value.setObjectName("destinationPath")
-        self.destination_value.setMinimumHeight(36)
+        self.destination_value.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.destination_value.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.destination_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self.choose_destination_button = QPushButton("Choose...")
         self.choose_destination_button.setObjectName("secondary")
-        self.choose_destination_button.setMinimumHeight(36)
+        self.choose_destination_button.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.choose_destination_button.clicked.connect(self.choose_destination_folder)
 
+        project_label = self._build_field_label("Project")
+        project_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         key_label = self._build_field_label("Key")
         key_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         mode_label = self._build_field_label("Mode")
@@ -316,32 +414,41 @@ class MainWindow(QMainWindow):
         dest_label = self._build_field_label("Destination")
         dest_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        label_width = 98
-        for label in (key_label, mode_label, dest_label):
+        self.export_labels = (project_label, key_label, mode_label, dest_label)
+        label_width = int(self.ui_sizes["export_label_width"])
+        for label in self.export_labels:
             label.setFixedWidth(label_width)
+
+        project_row = QHBoxLayout()
+        project_row.setContentsMargins(0, 0, 0, 0)
+        project_row.setSpacing(int(self.ui_sizes["field_spacing"]))
+        project_row.addWidget(project_label)
+        project_row.addWidget(self.project_name_input, 1)
 
         key_row = QHBoxLayout()
         key_row.setContentsMargins(0, 0, 0, 0)
-        key_row.setSpacing(18)
+        key_row.setSpacing(int(self.ui_sizes["field_spacing"]))
         key_row.addWidget(key_label)
         key_row.addWidget(self.key_input, 1)
 
         mode_row = QHBoxLayout()
         mode_row.setContentsMargins(0, 0, 0, 0)
-        mode_row.setSpacing(18)
+        mode_row.setSpacing(int(self.ui_sizes["field_spacing"]))
         mode_row.addWidget(mode_label)
         mode_row.addWidget(self.replace_mode, 1)
 
         destination_row = QHBoxLayout()
         destination_row.setContentsMargins(0, 0, 0, 0)
-        destination_row.setSpacing(18)
+        destination_row.setSpacing(int(self.ui_sizes["field_spacing"]))
         destination_row.addWidget(dest_label)
         destination_row.addWidget(self.destination_value, 1)
         destination_row.addWidget(self.choose_destination_button)
 
-        options_layout.addLayout(key_row)
-        options_layout.addLayout(mode_row)
-        options_layout.addLayout(destination_row)
+        self.export_rows = (project_row, key_row, mode_row, destination_row)
+        self.export_options_layout.addLayout(project_row)
+        self.export_options_layout.addLayout(key_row)
+        self.export_options_layout.addLayout(mode_row)
+        self.export_options_layout.addLayout(destination_row)
         return section
 
     def _build_progress_section(self) -> QWidget:
@@ -351,57 +458,58 @@ class MainWindow(QMainWindow):
         self._apply_panel_shadow(section)
         self.progress_card = section
 
-        progress_layout = QVBoxLayout(section)
-        progress_layout.setContentsMargins(20, 16, 20, 16)
-        progress_layout.setSpacing(12)
+        self.progress_layout = QVBoxLayout(section)
+        self.progress_layout.setContentsMargins(*self.ui_sizes["progress_margins"])
+        self.progress_layout.setSpacing(int(self.ui_sizes["progress_spacing"]))
 
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(10)
+        self.progress_header_layout = QHBoxLayout()
+        self.progress_header_layout.setContentsMargins(0, 0, 0, 0)
+        self.progress_header_layout.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
 
         title_label = QLabel("Progress")
         title_label.setObjectName("progressTitle")
         self.progress_label = QLabel("Idle")
         self.progress_label.setObjectName("progressStatePill")
         self.progress_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.progress_label.setMinimumWidth(96)
+        self.progress_label.setMinimumWidth(int(self.ui_sizes["progress_pill_width"]))
 
-        header_layout.addWidget(title_label)
-        header_layout.addStretch(1)
+        self.progress_header_layout.addWidget(title_label)
+        self.progress_header_layout.addStretch(1)
 
         self.progress_status_module = QWidget()
         self.progress_status_module.setObjectName("progressStatusModule")
         self.progress_status_module.setAttribute(Qt.WA_StyledBackground, True)
 
-        module_layout = QVBoxLayout(self.progress_status_module)
-        module_layout.setContentsMargins(22, 18, 22, 18)
-        module_layout.setSpacing(12)
+        self.progress_module_layout = QVBoxLayout(self.progress_status_module)
+        self.progress_module_layout.setContentsMargins(*self.ui_sizes["progress_module_margins"])
+        self.progress_module_layout.setSpacing(int(self.ui_sizes["progress_module_spacing"]))
 
-        status_row = QHBoxLayout()
-        status_row.setContentsMargins(0, 0, 0, 0)
-        status_row.setSpacing(10)
+        self.progress_status_row = QHBoxLayout()
+        self.progress_status_row.setContentsMargins(0, 0, 0, 0)
+        self.progress_status_row.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
 
         self.progress_icon_label = QLabel("i")
         self.progress_icon_label.setObjectName("progressStatusIcon")
         self.progress_icon_label.setAlignment(Qt.AlignCenter)
-        self.progress_icon_label.setFixedSize(QSize(26, 26))
+        progress_icon_size = int(self.ui_sizes["progress_icon_size"])
+        self.progress_icon_label.setFixedSize(QSize(progress_icon_size, progress_icon_size))
 
         self.progress_percent_label = QLabel("0%")
         self.progress_percent_label.setObjectName("progressPercent")
         self.progress_percent_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.progress_percent_label.setMinimumWidth(44)
+        self.progress_percent_label.setMinimumWidth(int(self.ui_sizes["progress_percent_width"]))
 
-        status_row.addWidget(self.progress_icon_label)
-        status_row.addWidget(self.progress_label)
-        status_row.addStretch(1)
-        status_row.addWidget(self.progress_percent_label)
+        self.progress_status_row.addWidget(self.progress_icon_label)
+        self.progress_status_row.addWidget(self.progress_label)
+        self.progress_status_row.addStretch(1)
+        self.progress_status_row.addWidget(self.progress_percent_label)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setObjectName("progressBar")
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False)
-        self.progress_bar.setFixedHeight(6)
+        self.progress_bar.setFixedHeight(int(self.ui_sizes["progress_bar_height"]))
         self.progress_bar.valueChanged.connect(self._refresh_progress_percent)
 
         self.progress_summary_area = QScrollArea()
@@ -410,14 +518,14 @@ class MainWindow(QMainWindow):
         self.progress_summary_area.setFrameShape(QFrame.NoFrame)
         self.progress_summary_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.progress_summary_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.progress_summary_area.setMinimumHeight(44)
-        self.progress_summary_area.setMaximumHeight(82)
+        self.progress_summary_area.setMinimumHeight(int(self.ui_sizes["progress_summary_min_height"]))
+        self.progress_summary_area.setMaximumHeight(int(self.ui_sizes["progress_summary_max_height"]))
 
         summary_body = QWidget()
         summary_body.setObjectName("progressSummaryBody")
-        summary_layout = QVBoxLayout(summary_body)
-        summary_layout.setContentsMargins(0, 2, 0, 0)
-        summary_layout.setSpacing(0)
+        self.summary_layout = QVBoxLayout(summary_body)
+        self.summary_layout.setContentsMargins(0, 2, 0, 0)
+        self.summary_layout.setSpacing(0)
 
         self.summary_label = QLabel("Scan the current set to begin.")
         self.summary_label.setObjectName("progressSummary")
@@ -425,22 +533,22 @@ class MainWindow(QMainWindow):
         self.summary_label.setWordWrap(True)
         self.summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.summary_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
-        summary_layout.addWidget(self.summary_label)
+        self.summary_layout.addWidget(self.summary_label)
         self.progress_summary_area.setWidget(summary_body)
 
-        module_layout.addLayout(status_row)
-        module_layout.addWidget(self.progress_bar)
-        module_layout.addWidget(self.progress_summary_area)
+        self.progress_module_layout.addLayout(self.progress_status_row)
+        self.progress_module_layout.addWidget(self.progress_bar)
+        self.progress_module_layout.addWidget(self.progress_summary_area)
 
-        progress_layout.addLayout(header_layout)
-        progress_layout.addWidget(self.progress_status_module)
+        self.progress_layout.addLayout(self.progress_header_layout)
+        self.progress_layout.addWidget(self.progress_status_module)
         self._set_progress_state("idle")
         return section
 
     def _build_action_row(self) -> QHBoxLayout:
         actions = QHBoxLayout()
-        actions.setContentsMargins(0, 10, 0, 0)
-        actions.setSpacing(22)
+        actions.setContentsMargins(*self.ui_sizes["action_margins"])
+        actions.setSpacing(int(self.ui_sizes["action_spacing"]))
         self.scan_button = QPushButton("Scan Current Set")
         self.scan_button.setObjectName("primaryAction")
         self.scan_button.clicked.connect(self.scan_current_set)
@@ -457,10 +565,11 @@ class MainWindow(QMainWindow):
         self.open_button.setObjectName("secondary")
         self.open_button.clicked.connect(self.open_export_folder)
         self.open_button.setEnabled(False)
-        for button in (self.scan_button, self.open_button, self.cancel_button, self.export_button):
+        self.action_buttons = (self.scan_button, self.open_button, self.cancel_button, self.export_button)
+        for button in self.action_buttons:
             button.setProperty("actionBarButton", True)
-            button.setMinimumHeight(38)
-            button.setMaximumHeight(38)
+            button.setMinimumHeight(int(self.ui_sizes["action_height"]))
+            button.setMaximumHeight(int(self.ui_sizes["action_height"]))
         actions.addWidget(self.scan_button, 1)
         actions.addWidget(self.open_button, 1)
         actions.addWidget(self.cancel_button, 1)
@@ -473,8 +582,9 @@ class MainWindow(QMainWindow):
         section.setAttribute(Qt.WA_StyledBackground, True)
         self._apply_panel_shadow(section)
         layout = QVBoxLayout(section)
-        layout.setContentsMargins(20, 16, 20, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(*self.ui_sizes["card_margins"])
+        layout.setSpacing(int(self.ui_sizes["card_spacing"]))
+        self.card_layouts.append(layout)
 
         title_label = QLabel(title)
         title_label.setObjectName("cardTitle")
@@ -490,13 +600,100 @@ class MainWindow(QMainWindow):
 
     def _apply_panel_shadow(self, widget: QWidget) -> None:
         shadow = QGraphicsDropShadowEffect(widget)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 12)
+        shadow.setBlurRadius(int(self.ui_sizes["shadow_blur"]))
+        shadow.setOffset(0, int(self.ui_sizes["shadow_offset"]))
         shadow.setColor(QColor(0, 0, 0, 58))
         widget.setGraphicsEffect(shadow)
+        self.panel_shadow_widgets.append(widget)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        super().resizeEvent(event)
+        if not getattr(self, "_ui_ready", False):
+            return
+        scale = self._scale_for_size(event.size())
+        if abs(scale - self.ui_scale) < 0.01:
+            return
+        self.ui_scale = scale
+        self.ui_sizes = ui_sizes_for_scale(self.ui_scale)
+        self._apply_scaled_sizes()
+
+    def _scale_for_size(self, size: QSize) -> float:
+        width_scale = size.width() / REFERENCE_WINDOW_SIZE[0]
+        height_scale = size.height() / REFERENCE_WINDOW_SIZE[1]
+        return _clamp_scale(min(width_scale, height_scale))
+
+    def _apply_scaled_sizes(self) -> None:
+        self.setStyleSheet(stylesheet_for_scale(self.ui_scale))
+        self.window_layout.setContentsMargins(*self.ui_sizes["window_margins"])
+        self.window_layout.setSpacing(int(self.ui_sizes["window_spacing"]))
+        self.content_layout.setSpacing(int(self.ui_sizes["window_spacing"]))
+
+        header_button = int(self.ui_sizes["header_button"])
+        self.preferences_button.setFixedSize(QSize(header_button, header_button))
+
+        current_value_height = int(self.ui_sizes["current_value_height"])
+        for value in (self.song_value, self.bpm_value, self.path_value):
+            value.setMinimumHeight(current_value_height)
+        for label in self.current_set_labels:
+            label.setFixedWidth(int(self.ui_sizes["current_label_width"]))
+        for row in self.current_rows:
+            row.setSpacing(int(self.ui_sizes["current_row_spacing"]))
+        self.current_body_layout.setSpacing(int(self.ui_sizes["card_spacing"]))
+
+        self.stems_layout.setSpacing(int(self.ui_sizes["section_spacing"]))
+        self.stem_panel_layout.setContentsMargins(*self.ui_sizes["stem_panel_margins"])
+        self.track_list.setMinimumHeight(int(self.ui_sizes["stem_list_min_height"]))
+
+        self.export_section.setMinimumHeight(int(self.ui_sizes["export_min_height"]))
+        self.export_options_layout.setSpacing(int(self.ui_sizes["card_spacing"]))
+        field_height = int(self.ui_sizes["field_height"])
+        for widget in (self.project_name_input, self.key_input, self.replace_mode, self.destination_value, self.choose_destination_button):
+            widget.setMinimumHeight(field_height)
+        for label in self.export_labels:
+            label.setFixedWidth(int(self.ui_sizes["export_label_width"]))
+        for row in self.export_rows:
+            row.setSpacing(int(self.ui_sizes["field_spacing"]))
+
+        self.progress_layout.setContentsMargins(*self.ui_sizes["progress_margins"])
+        self.progress_layout.setSpacing(int(self.ui_sizes["progress_spacing"]))
+        self.progress_header_layout.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
+        self.progress_module_layout.setContentsMargins(*self.ui_sizes["progress_module_margins"])
+        self.progress_module_layout.setSpacing(int(self.ui_sizes["progress_module_spacing"]))
+        self.progress_status_row.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
+        self.progress_label.setMinimumWidth(int(self.ui_sizes["progress_pill_width"]))
+        progress_icon_size = int(self.ui_sizes["progress_icon_size"])
+        self.progress_icon_label.setFixedSize(QSize(progress_icon_size, progress_icon_size))
+        self.progress_percent_label.setMinimumWidth(int(self.ui_sizes["progress_percent_width"]))
+        self.progress_bar.setFixedHeight(int(self.ui_sizes["progress_bar_height"]))
+        self.progress_summary_area.setMinimumHeight(int(self.ui_sizes["progress_summary_min_height"]))
+        self.progress_summary_area.setMaximumHeight(int(self.ui_sizes["progress_summary_max_height"]))
+        self.summary_layout.setContentsMargins(0, max(0, round(2 * self.ui_scale)), 0, 0)
+
+        self.action_layout.setContentsMargins(*self.ui_sizes["action_margins"])
+        self.action_layout.setSpacing(int(self.ui_sizes["action_spacing"]))
+        action_height = int(self.ui_sizes["action_height"])
+        for button in self.action_buttons:
+            button.setMinimumHeight(action_height)
+            button.setMaximumHeight(action_height)
+
+        for layout in self.card_layouts:
+            layout.setContentsMargins(*self.ui_sizes["card_margins"])
+            layout.setSpacing(int(self.ui_sizes["card_spacing"]))
+        for widget in self.panel_shadow_widgets:
+            effect = widget.graphicsEffect()
+            if isinstance(effect, QGraphicsDropShadowEffect):
+                effect.setBlurRadius(int(self.ui_sizes["shadow_blur"]))
+                effect.setOffset(0, int(self.ui_sizes["shadow_offset"]))
+
+        row_height = int(self.ui_sizes["stem_row_height"])
+        for index in range(self.track_list.count()):
+            item = self.track_list.item(index)
+            item.setSizeHint(QSize(0, row_height))
+            row = self.track_list.itemWidget(item)
+            if isinstance(row, StemTrackRow):
+                row.apply_sizes(self.ui_sizes)
 
     def _apply_preferences_to_ui(self) -> None:
-        self.key_input.setText(self.preferences.default_key)
         index = 0 if self.preferences.replace_mode == "replace" else 1
         self.replace_mode.setCurrentIndex(index)
         if self.preferences.sticky_panel_position and self.preferences.panel_x is not None and self.preferences.panel_y is not None:
@@ -557,6 +754,7 @@ class MainWindow(QMainWindow):
         self.state = state
         self.project = project
         self.song_value.setText(project.song_name)
+        self.project_name_input.setPlaceholderText(project.song_name)
         self.bpm_value.setText(str(project.bpm) if project.bpm is not None else "Unknown")
         self.path_value.setText(str(project.project_folder))
         self._populate_tracks(state.detected_tracks)
@@ -576,7 +774,9 @@ class MainWindow(QMainWindow):
         self._set_progress_state("scan-failed")
         self.progress_label.setText("Scan failed")
         self.summary_label.setText(message)
-        QMessageBox.warning(self, "Scan failed", message)
+        if not self._startup_scan:
+            QMessageBox.warning(self, "Scan failed", message)
+        self._startup_scan = False
 
     def _cleanup_scan_thread(self, *_args) -> None:
         if self.scan_thread is not None:
@@ -592,8 +792,13 @@ class MainWindow(QMainWindow):
         self.status_by_track_name.clear()
         for display_index, track in enumerate(tracks, start=1):
             item = QListWidgetItem(self.track_list)
-            item.setSizeHint(QSize(0, StemTrackRow.ROW_HEIGHT))
-            row = StemTrackRow(track, display_index, show_separator=display_index < len(tracks))
+            item.setSizeHint(QSize(0, int(self.ui_sizes["stem_row_height"])))
+            row = StemTrackRow(
+                track,
+                display_index,
+                sizes=self.ui_sizes,
+                show_separator=display_index < len(tracks),
+            )
             row.checkbox.toggled.connect(self.update_destination_preview)
             self.track_list.setItemWidget(item, row)
             self.item_by_track_name[track.name] = item
@@ -618,6 +823,7 @@ class MainWindow(QMainWindow):
             self.destination_value.setText("-")
             return
         tracks = self._selected_tracks()
+        custom_song_name = self.project_name_input.text().strip() or None
         key = self.key_input.text().strip() or None
         replace_mode = self.replace_mode.currentData()
         destination_root = (self.preferences.export_destination_root or "").strip() or None
@@ -625,6 +831,9 @@ class MainWindow(QMainWindow):
             key=key,
             replace_mode=replace_mode,
             destination_root=destination_root,
+            custom_song_name=custom_song_name,
+            stem_name_format=self.preferences.stem_name_format,
+            folder_name_format=self.preferences.folder_name_format,
         )
         self.current_job = replace(job, tracks=tracks)
         self.destination_value.setText(self.current_job.stems_dir.name or "-")
