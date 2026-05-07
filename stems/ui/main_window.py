@@ -611,7 +611,7 @@ class MainWindow(QMainWindow):
         if not getattr(self, "_ui_ready", False):
             return
         scale = self._scale_for_size(event.size())
-        if abs(scale - self.ui_scale) < 0.01:
+        if abs(scale - self.ui_scale) < 0.005:
             return
         self.ui_scale = scale
         self.ui_sizes = ui_sizes_for_scale(self.ui_scale)
@@ -623,6 +623,14 @@ class MainWindow(QMainWindow):
         return _clamp_scale(min(width_scale, height_scale))
 
     def _apply_scaled_sizes(self) -> None:
+        self.setUpdatesEnabled(False)
+        try:
+            self._apply_scaled_sizes_inner()
+        finally:
+            self.setUpdatesEnabled(True)
+            self.update()
+
+    def _apply_scaled_sizes_inner(self) -> None:
         self.setStyleSheet(stylesheet_for_scale(self.ui_scale))
         self.window_layout.setContentsMargins(*self.ui_sizes["window_margins"])
         self.window_layout.setSpacing(int(self.ui_sizes["window_spacing"]))

@@ -745,11 +745,16 @@ def _compact_stylesheet() -> str:
 BASE_STYLESHEET = _compact_stylesheet()
 
 
-def stylesheet_for_scale(scale: float) -> str:
-    def replace_px(match: re.Match[str]) -> str:
-        value = int(match.group(1))
-        if value == 0:
-            return "0px"
-        return f"{max(1, round(value * scale))}px"
+_stylesheet_cache: dict[float, str] = {}
 
-    return re.sub(r"(\d+)px", replace_px, BASE_STYLESHEET)
+
+def stylesheet_for_scale(scale: float) -> str:
+    key = round(scale, 2)
+    if key not in _stylesheet_cache:
+        def replace_px(match: re.Match[str]) -> str:
+            value = int(match.group(1))
+            if value == 0:
+                return "0px"
+            return f"{max(1, round(value * key))}px"
+        _stylesheet_cache[key] = re.sub(r"(\d+)px", replace_px, BASE_STYLESHEET)
+    return _stylesheet_cache[key]
