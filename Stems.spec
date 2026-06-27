@@ -69,5 +69,6 @@ app = BUNDLE(
         "CFBundleName": "Stems",
         "LSUIElement": False,
         "NSAppleEventsUsageDescription": "Stems needs Apple Events access to automate Ableton export dialogs.",
+        "NSAccessibilityUsageDescription": "Stems needs Accessibility access to read Ableton's project name and control its export dialog.",
     },
 )

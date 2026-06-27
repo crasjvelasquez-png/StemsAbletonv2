@@ -3,17 +3,17 @@ from __future__ import annotations
 import re
 
 DESIGN_TOKENS = {
-    "bg_top": "#22252e",
-    "bg_mid": "#1e2129",
-    "bg_bottom": "#1a1d24",
-    "panel": "rgba(35, 38, 50, 0.48)",
-    "panel_soft": "rgba(30, 33, 44, 0.40)",
-    "panel_hover": "rgba(50, 54, 68, 0.38)",
-    "field": "rgba(24, 27, 36, 0.58)",
-    "field_hover": "rgba(32, 36, 48, 0.68)",
-    "border": "rgba(220, 230, 255, 0.10)",
-    "border_strong": "rgba(220, 230, 255, 0.18)",
-    "separator": "rgba(220, 230, 255, 0.08)",
+    "bg_top": "#090a0d",
+    "bg_mid": "#07080b",
+    "bg_bottom": "#050609",
+    "panel": "rgba(24, 28, 38, 0.62)",
+    "panel_soft": "rgba(24, 28, 38, 0.52)",
+    "panel_hover": "rgba(34, 39, 51, 0.64)",
+    "field": "rgba(15, 17, 23, 0.78)",
+    "field_hover": "rgba(27, 31, 41, 0.86)",
+    "border": "rgba(238, 244, 255, 0.13)",
+    "border_strong": "rgba(238, 244, 255, 0.22)",
+    "separator": "rgba(220, 230, 255, 0.12)",
     "text": "rgba(244, 248, 252, 0.90)",
     "text_strong": "rgba(250, 252, 255, 0.96)",
     "text_muted": "rgba(221, 231, 242, 0.58)",
@@ -25,11 +25,11 @@ DESIGN_TOKENS = {
     "warning": "#f5d56e",
     "danger": "#e85d5d",
     "accent_text": "#071522",
-    "menu": "#1e2129",
+    "menu": "#11141b",
     "radius_panel": "10px",
     "radius_control": "8px",
     "radius_pill": "11px",
-    "font_family": '".AppleSystemUIFont", "SF Pro Text", "Helvetica Neue"',
+    "font_family": '"Avenir Next", "SF Pro Rounded", "SF Pro Text", "Helvetica Neue"',
 }
 
 

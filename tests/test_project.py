@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 
 import stems.project as project
@@ -75,7 +74,26 @@ def test_get_project_info_includes_window_title_error_detail():
     try:
         project.get_project_info(runner=runner)
     except ProjectDetectionError as exc:
-        assert "not authorized for assistive access" in str(exc)
+        assert "Accessibility permission" in str(exc)
+        assert "System Settings" in str(exc)
+    else:
+        raise AssertionError("Expected ProjectDetectionError")
+
+
+def test_get_project_info_reports_ableton_not_open_for_missing_live_process():
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(
+                stdout="",
+                returncode=1,
+                stderr='40:44: execution error: System Events got an error: Can’t get process 1 whose name = "Live". Invalid index. (-1719)',
+            )
+        raise AssertionError(command)
+
+    try:
+        project.get_project_info(runner=runner)
+    except ProjectDetectionError as exc:
+        assert str(exc) == "Ableton is not open"
     else:
         raise AssertionError("Expected ProjectDetectionError")
 

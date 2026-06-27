@@ -9,7 +9,7 @@ from .errors import AbletonConnectionError, ProjectDetectionError, StemsError
 from .export import ExportAutomation, execute_export_job
 from .logging_setup import configure_logging
 from .models import ExportResult, StemTrack
-from .naming import stems_folder_name
+from .naming import stem_file_name, stems_folder_name
 from .osc import OSCGateway
 from .project import get_stems_folder, rename_old_stems_folders
 from .state import AppState

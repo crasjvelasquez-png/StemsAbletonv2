@@ -119,10 +119,33 @@ def _project_from_backup_candidate(path: Path, name: str) -> Path | None:
     return None
 
 
+def _is_accessibility_error(errors: list[str]) -> bool:
+    for err in errors:
+        if "assistive access" in err.lower():
+            return True
+    return False
+
+
+def _is_ableton_not_open_error(errors: list[str]) -> bool:
+    for err in errors:
+        normalized = err.lower().replace("can’t", "can't")
+        if "can't get process" in normalized and ('name = "live"' in normalized or "name starts with" in normalized):
+            return True
+    return False
+
+
 def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[Path, str]:
     song_name, title_errors = _read_live_window_title_with_errors(runner)
 
     if not song_name:
+        if _is_ableton_not_open_error(title_errors):
+            raise ProjectDetectionError("Ableton is not open")
+        if _is_accessibility_error(title_errors):
+            raise ProjectDetectionError(
+                "Stems needs Accessibility permission to read Ableton's project name.\n\n"
+                "Go to System Settings → Privacy & Security → Accessibility,\n"
+                "then enable Stems and relaunch the app."
+            )
         detail = ""
         if title_errors:
             detail = f" Last AppleScript error: {title_errors[-1]}"

@@ -21,6 +21,7 @@ try:
         QComboBox,
         QFileDialog,
         QGraphicsDropShadowEffect,
+        QGridLayout,
         QHBoxLayout,
         QLabel,
         QLineEdit,
@@ -48,12 +49,16 @@ from .worker import ExportWorker, ScanWorker
 
 
 REFERENCE_WINDOW_SIZE = (540, 680)
-MIN_UI_SCALE = 0.5
-MAX_UI_SCALE = 2.0
+MIN_WINDOW_SCALE = 0.75
+COMPACT_BREAKPOINT_SIZE = (430, 540)
+MIN_WINDOW_SIZE = (
+    round(REFERENCE_WINDOW_SIZE[0] * MIN_WINDOW_SCALE),
+    round(REFERENCE_WINDOW_SIZE[1] * MIN_WINDOW_SCALE),
+)
 
 
 UI_BASE_SIZES = {
-    "window_min": (270, 340),
+    "window_min": MIN_WINDOW_SIZE,
     "window_default": REFERENCE_WINDOW_SIZE,
     "window_margins": (16, 8, 16, 16),
     "window_spacing": 12,
@@ -90,13 +95,9 @@ UI_BASE_SIZES = {
     "action_margins": (0, 8, 0, 0),
     "action_spacing": 12,
     "action_height": 30,
-    "shadow_blur": 20,
-    "shadow_offset": 8,
+    "shadow_blur": 36,
+    "shadow_offset": 12,
 }
-
-
-def _clamp_scale(scale: float) -> float:
-    return max(MIN_UI_SCALE, min(MAX_UI_SCALE, scale))
 
 
 def _scaled_value(value: int | tuple[int, ...], scale: float) -> int | tuple[int, ...]:
@@ -109,6 +110,10 @@ def ui_sizes_for_scale(scale: float) -> dict[str, int | tuple[int, ...]]:
     return {key: _scaled_value(value, scale) for key, value in UI_BASE_SIZES.items()}
 
 
+def _uses_compact_layout(size: QSize) -> bool:
+    return size.width() < COMPACT_BREAKPOINT_SIZE[0] or size.height() < COMPACT_BREAKPOINT_SIZE[1]
+
+
 def _resource_path(*parts: str) -> Path:
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
     return base.joinpath(*parts)
@@ -116,6 +121,47 @@ def _resource_path(*parts: str) -> Path:
 
 def _app_icon() -> QIcon:
     return QIcon(str(_resource_path("assets", "logo", "stems-tower.png")))
+
+
+class ElidedLabel(QLabel):
+    """QLabel that truncates text with ellipsis when too narrow, showing
+    the full text in a tooltip on hover."""
+
+    def __init__(
+        self,
+        text: str = "",
+        parent: QWidget | None = None,
+        *,
+        elide_mode: Qt.TextElideMode = Qt.ElideRight,
+    ) -> None:
+        super().__init__(text, parent)
+        self._full_text = text
+        self._elide_mode = elide_mode
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        self._update_elided_text()
+
+    def fullText(self) -> str:
+        return self._full_text
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_elided_text()
+
+    def _update_elided_text(self) -> None:
+        metrics = self.fontMetrics()
+        available = self.contentsRect().width()
+        if available <= 0:
+            super().setText(self._full_text)
+            self.setToolTip("")
+            return
+        elided = metrics.elidedText(self._full_text, self._elide_mode, available)
+        super().setText(elided)
+        if elided != self._full_text and self._full_text and self._full_text != "-":
+            self.setToolTip(self._full_text)
+        else:
+            self.setToolTip("")
 
 
 class StemTrackRow(QWidget):
@@ -146,9 +192,8 @@ class StemTrackRow(QWidget):
         self.index_label.setObjectName("stemRowIndex")
         self.index_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.name_label = QLabel(track.name)
+        self.name_label = ElidedLabel(track.name)
         self.name_label.setObjectName("stemRowName")
-        self.name_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.name_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         self.checkbox = QCheckBox()
@@ -205,8 +250,9 @@ class MainWindow(QMainWindow):
         self.preferences_store = PreferencesStore()
         self.preferences = self.preferences_store.load()
         self.ui_scale = 1.0
+        self._compact_mode = False
         self.ui_sizes = ui_sizes_for_scale(self.ui_scale)
-        self.setMinimumSize(*self.ui_sizes["window_min"])
+        self.setMinimumSize(*MIN_WINDOW_SIZE)
         self.resize(*self.ui_sizes["window_default"])
         self.gateway = OSCGateway()
         self.gateway.start_listener()
@@ -266,8 +312,10 @@ class MainWindow(QMainWindow):
 
         scroll_area.setWidget(scroll_content)
         self.window_layout.addWidget(scroll_area, 1)
+        self.action_widget = QWidget()
         self.action_layout = self._build_action_row()
-        self.window_layout.addLayout(self.action_layout)
+        self.action_widget.setLayout(self.action_layout)
+        self.window_layout.addWidget(self.action_widget)
 
     def _build_header_section(self) -> QWidget:
         section = QWidget()
@@ -293,10 +341,8 @@ class MainWindow(QMainWindow):
         self.current_body_layout.setContentsMargins(0, 0, 0, 0)
         self.current_body_layout.setSpacing(int(self.ui_sizes["card_spacing"]))
 
-        self.song_value = QLabel("Not scanned")
+        self.song_value = ElidedLabel("Not scanned")
         self.song_value.setObjectName("currentSetValue")
-        self.song_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.song_value.setWordWrap(True)
         self.song_value.setMinimumHeight(int(self.ui_sizes["current_value_height"]))
         self.song_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
@@ -305,12 +351,10 @@ class MainWindow(QMainWindow):
         self.bpm_value.setMinimumHeight(int(self.ui_sizes["current_value_height"]))
         self.bpm_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
-        self.path_value = QLabel("-")
+        self.path_value = ElidedLabel("-", elide_mode=Qt.ElideMiddle)
         self.path_value.setObjectName("currentSetPathValue")
-        self.path_value.setWordWrap(True)
         self.path_value.setMinimumHeight(int(self.ui_sizes["current_value_height"]))
         self.path_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.path_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         song_label = QLabel("Song")
         song_label.setObjectName("currentSetLabel")
@@ -320,7 +364,8 @@ class MainWindow(QMainWindow):
         proj_label.setObjectName("currentSetLabel")
 
         self.current_set_labels = (song_label, bpm_label, proj_label)
-        self.current_rows: list[QHBoxLayout] = []
+        self.current_row_widgets: list[QWidget] = []
+        self.current_row_pairs: list[tuple[QLabel, QLabel]] = []
         label_width = int(self.ui_sizes["current_label_width"])
         for label in self.current_set_labels:
             label.setFixedWidth(label_width)
@@ -331,13 +376,15 @@ class MainWindow(QMainWindow):
             (bpm_label, self.bpm_value),
             (proj_label, self.path_value),
         ):
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(int(self.ui_sizes["current_row_spacing"]))
-            row.addWidget(label)
-            row.addWidget(value, 1)
-            self.current_rows.append(row)
-            self.current_body_layout.addLayout(row)
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(int(self.ui_sizes["current_row_spacing"]))
+            row_layout.addWidget(label)
+            row_layout.addWidget(value, 1)
+            self.current_row_widgets.append(row_widget)
+            self.current_row_pairs.append((label, value))
+            self.current_body_layout.addWidget(row_widget)
 
         return section
 
@@ -394,11 +441,10 @@ class MainWindow(QMainWindow):
         self.replace_mode.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.replace_mode.currentIndexChanged.connect(self.update_destination_preview)
 
-        self.destination_value = QLabel("-")
+        self.destination_value = ElidedLabel("-", elide_mode=Qt.ElideMiddle)
         self.destination_value.setObjectName("destinationPath")
         self.destination_value.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.destination_value.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.destination_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self.choose_destination_button = QPushButton("Choose...")
         self.choose_destination_button.setObjectName("secondary")
@@ -419,36 +465,27 @@ class MainWindow(QMainWindow):
         for label in self.export_labels:
             label.setFixedWidth(label_width)
 
-        project_row = QHBoxLayout()
-        project_row.setContentsMargins(0, 0, 0, 0)
-        project_row.setSpacing(int(self.ui_sizes["field_spacing"]))
-        project_row.addWidget(project_label)
-        project_row.addWidget(self.project_name_input, 1)
+        self.export_row_widgets: list[QWidget] = []
+        self.export_row_data: list[tuple[QLabel, ...]] = []
 
-        key_row = QHBoxLayout()
-        key_row.setContentsMargins(0, 0, 0, 0)
-        key_row.setSpacing(int(self.ui_sizes["field_spacing"]))
-        key_row.addWidget(key_label)
-        key_row.addWidget(self.key_input, 1)
+        for label, *widgets in (
+            (project_label, self.project_name_input),
+            (key_label, self.key_input),
+            (mode_label, self.replace_mode),
+            (dest_label, self.destination_value, self.choose_destination_button),
+        ):
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(int(self.ui_sizes["field_spacing"]))
+            row_layout.addWidget(label)
+            for i, w in enumerate(widgets):
+                stretch = 1 if i == 0 else 0
+                row_layout.addWidget(w, stretch)
+            self.export_row_widgets.append(row_widget)
+            self.export_row_data.append((label, *widgets))
+            self.export_options_layout.addWidget(row_widget)
 
-        mode_row = QHBoxLayout()
-        mode_row.setContentsMargins(0, 0, 0, 0)
-        mode_row.setSpacing(int(self.ui_sizes["field_spacing"]))
-        mode_row.addWidget(mode_label)
-        mode_row.addWidget(self.replace_mode, 1)
-
-        destination_row = QHBoxLayout()
-        destination_row.setContentsMargins(0, 0, 0, 0)
-        destination_row.setSpacing(int(self.ui_sizes["field_spacing"]))
-        destination_row.addWidget(dest_label)
-        destination_row.addWidget(self.destination_value, 1)
-        destination_row.addWidget(self.choose_destination_button)
-
-        self.export_rows = (project_row, key_row, mode_row, destination_row)
-        self.export_options_layout.addLayout(project_row)
-        self.export_options_layout.addLayout(key_row)
-        self.export_options_layout.addLayout(mode_row)
-        self.export_options_layout.addLayout(destination_row)
         return section
 
     def _build_progress_section(self) -> QWidget:
@@ -602,7 +639,7 @@ class MainWindow(QMainWindow):
         shadow = QGraphicsDropShadowEffect(widget)
         shadow.setBlurRadius(int(self.ui_sizes["shadow_blur"]))
         shadow.setOffset(0, int(self.ui_sizes["shadow_offset"]))
-        shadow.setColor(QColor(10, 12, 18, 72))
+        shadow.setColor(QColor(0, 0, 0, 118))
         widget.setGraphicsEffect(shadow)
         self.panel_shadow_widgets.append(widget)
 
@@ -610,96 +647,94 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if not getattr(self, "_ui_ready", False):
             return
-        scale = self._scale_for_size(event.size())
-        if abs(scale - self.ui_scale) < 0.005:
+        self._apply_compact_mode(_uses_compact_layout(event.size()))
+
+    def _apply_compact_mode(self, should_be_compact: bool) -> None:
+        if should_be_compact == self._compact_mode:
             return
-        self.ui_scale = scale
-        self.ui_sizes = ui_sizes_for_scale(self.ui_scale)
-        self._apply_scaled_sizes()
+        self._compact_mode = should_be_compact
 
-    def _scale_for_size(self, size: QSize) -> float:
-        width_scale = size.width() / REFERENCE_WINDOW_SIZE[0]
-        height_scale = size.height() / REFERENCE_WINDOW_SIZE[1]
-        return _clamp_scale(min(width_scale, height_scale))
+        for row_widget, (label, value) in zip(self.current_row_widgets, self.current_row_pairs):
+            if should_be_compact:
+                label.setMaximumWidth(16777215)
+                label.setMinimumWidth(0)
+                label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            else:
+                label.setFixedWidth(int(self.ui_sizes["current_label_width"]))
+                label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            self._rebuild_form_row(
+                row_widget,
+                [(label, 0), (value, 1)],
+                vertical=should_be_compact,
+                spacing=2 if should_be_compact else int(self.ui_sizes["current_row_spacing"]),
+            )
 
-    def _apply_scaled_sizes(self) -> None:
-        self.setUpdatesEnabled(False)
-        try:
-            self._apply_scaled_sizes_inner()
-        finally:
-            self.setUpdatesEnabled(True)
-            self.update()
+        for row_widget, row_data in zip(self.export_row_widgets, self.export_row_data):
+            label = row_data[0]
+            if should_be_compact:
+                label.setMaximumWidth(16777215)
+                label.setMinimumWidth(0)
+            else:
+                label.setFixedWidth(int(self.ui_sizes["export_label_width"]))
+            widgets_with_stretch = [(label, 0)]
+            for w in row_data[1:]:
+                stretch = 0 if w is self.choose_destination_button else 1
+                widgets_with_stretch.append((w, stretch))
+            self._rebuild_form_row(
+                row_widget,
+                widgets_with_stretch,
+                vertical=should_be_compact,
+                spacing=4 if should_be_compact else int(self.ui_sizes["field_spacing"]),
+            )
 
-    def _apply_scaled_sizes_inner(self) -> None:
-        self.setStyleSheet(stylesheet_for_scale(self.ui_scale))
-        self.window_layout.setContentsMargins(*self.ui_sizes["window_margins"])
-        self.window_layout.setSpacing(int(self.ui_sizes["window_spacing"]))
-        self.content_layout.setSpacing(int(self.ui_sizes["window_spacing"]))
+        self._rebuild_action_bar(should_be_compact)
 
-        header_button = int(self.ui_sizes["header_button"])
-        self.preferences_button.setFixedSize(QSize(header_button, header_button))
+    def _rebuild_form_row(
+        self,
+        row_widget: QWidget,
+        widgets: list[tuple[QWidget, int]],
+        *,
+        vertical: bool,
+        spacing: int,
+    ) -> None:
+        old_layout = row_widget.layout()
+        if old_layout is not None:
+            while old_layout.count():
+                old_layout.takeAt(0)
+            QWidget().setLayout(old_layout)
 
-        current_value_height = int(self.ui_sizes["current_value_height"])
-        for value in (self.song_value, self.bpm_value, self.path_value):
-            value.setMinimumHeight(current_value_height)
-        for label in self.current_set_labels:
-            label.setFixedWidth(int(self.ui_sizes["current_label_width"]))
-        for row in self.current_rows:
-            row.setSpacing(int(self.ui_sizes["current_row_spacing"]))
-        self.current_body_layout.setSpacing(int(self.ui_sizes["card_spacing"]))
+        new_layout = QVBoxLayout(row_widget) if vertical else QHBoxLayout(row_widget)
+        new_layout.setContentsMargins(0, 0, 0, 0)
+        new_layout.setSpacing(spacing)
+        for widget, stretch in widgets:
+            new_layout.addWidget(widget, stretch)
 
-        self.stems_layout.setSpacing(int(self.ui_sizes["section_spacing"]))
-        self.stem_panel_layout.setContentsMargins(*self.ui_sizes["stem_panel_margins"])
-        self.track_list.setMinimumHeight(int(self.ui_sizes["stem_list_min_height"]))
-
-        self.export_section.setMinimumHeight(int(self.ui_sizes["export_min_height"]))
-        self.export_options_layout.setSpacing(int(self.ui_sizes["card_spacing"]))
-        field_height = int(self.ui_sizes["field_height"])
-        for widget in (self.project_name_input, self.key_input, self.replace_mode, self.destination_value, self.choose_destination_button):
-            widget.setMinimumHeight(field_height)
-        for label in self.export_labels:
-            label.setFixedWidth(int(self.ui_sizes["export_label_width"]))
-        for row in self.export_rows:
-            row.setSpacing(int(self.ui_sizes["field_spacing"]))
-
-        self.progress_layout.setContentsMargins(*self.ui_sizes["progress_margins"])
-        self.progress_layout.setSpacing(int(self.ui_sizes["progress_spacing"]))
-        self.progress_header_layout.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
-        self.progress_module_layout.setContentsMargins(*self.ui_sizes["progress_module_margins"])
-        self.progress_module_layout.setSpacing(int(self.ui_sizes["progress_module_spacing"]))
-        self.progress_status_row.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
-        self.progress_label.setMinimumWidth(int(self.ui_sizes["progress_pill_width"]))
-        progress_icon_size = int(self.ui_sizes["progress_icon_size"])
-        self.progress_icon_label.setFixedSize(QSize(progress_icon_size, progress_icon_size))
-        self.progress_percent_label.setMinimumWidth(int(self.ui_sizes["progress_percent_width"]))
-        self.progress_bar.setFixedHeight(int(self.ui_sizes["progress_bar_height"]))
-        self.progress_summary_area.setMinimumHeight(int(self.ui_sizes["progress_summary_min_height"]))
-        self.progress_summary_area.setMaximumHeight(int(self.ui_sizes["progress_summary_max_height"]))
-        self.summary_layout.setContentsMargins(0, max(0, round(2 * self.ui_scale)), 0, 0)
-
-        self.action_layout.setContentsMargins(*self.ui_sizes["action_margins"])
-        self.action_layout.setSpacing(int(self.ui_sizes["action_spacing"]))
-        action_height = int(self.ui_sizes["action_height"])
+    def _rebuild_action_bar(self, compact: bool) -> None:
         for button in self.action_buttons:
-            button.setMinimumHeight(action_height)
-            button.setMaximumHeight(action_height)
+            self.action_layout.removeWidget(button)
+        while self.action_layout.count():
+            self.action_layout.takeAt(0)
+        QWidget().setLayout(self.action_layout)
 
-        for layout in self.card_layouts:
-            layout.setContentsMargins(*self.ui_sizes["card_margins"])
-            layout.setSpacing(int(self.ui_sizes["card_spacing"]))
-        for widget in self.panel_shadow_widgets:
-            effect = widget.graphicsEffect()
-            if isinstance(effect, QGraphicsDropShadowEffect):
-                effect.setBlurRadius(int(self.ui_sizes["shadow_blur"]))
-                effect.setOffset(0, int(self.ui_sizes["shadow_offset"]))
+        action_spacing = int(self.ui_sizes["action_spacing"])
 
-        row_height = int(self.ui_sizes["stem_row_height"])
-        for index in range(self.track_list.count()):
-            item = self.track_list.item(index)
-            item.setSizeHint(QSize(0, row_height))
-            row = self.track_list.itemWidget(item)
-            if isinstance(row, StemTrackRow):
-                row.apply_sizes(self.ui_sizes)
+        if compact:
+            new_layout = QGridLayout()
+            new_layout.setContentsMargins(*self.ui_sizes["action_margins"])
+            new_layout.setSpacing(action_spacing)
+            new_layout.addWidget(self.scan_button, 0, 0)
+            new_layout.addWidget(self.export_button, 0, 1)
+            new_layout.addWidget(self.open_button, 1, 0)
+            new_layout.addWidget(self.cancel_button, 1, 1)
+        else:
+            new_layout = QHBoxLayout()
+            new_layout.setContentsMargins(*self.ui_sizes["action_margins"])
+            new_layout.setSpacing(action_spacing)
+            for button in self.action_buttons:
+                new_layout.addWidget(button, 1)
+
+        self.action_widget.setLayout(new_layout)
+        self.action_layout = new_layout
 
     def _apply_preferences_to_ui(self) -> None:
         index = 0 if self.preferences.replace_mode == "replace" else 1
@@ -866,7 +901,7 @@ class MainWindow(QMainWindow):
         self.update_destination_preview()
 
     def show_preferences(self) -> None:
-        dialog = PreferencesDialog(self.preferences, self)
+        dialog = PreferencesDialog(self.preferences, self, scale=self.ui_scale)
         if dialog.exec() == dialog.Accepted:
             self.preferences = dialog.to_preferences()
             self.preferences.launch_at_login = dialog.launch_at_login.isChecked()

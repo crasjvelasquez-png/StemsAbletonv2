@@ -6,12 +6,13 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QMessageBox, QVBoxLayout
 
 from stems.models import ExportItemResult, ExportJob, ExportResult, ProjectContext, StemTrack
 from stems.preferences import Preferences
 from stems.ui import main_window as main_window_module
+from stems.ui.main_window import ElidedLabel
 
 
 class DummyGateway:
@@ -91,8 +92,8 @@ def test_current_set_card_uses_stronger_info_blocks(window):
     assert window.song_value.objectName() == "currentSetValue"
     assert window.bpm_value.objectName() == "currentSetValue"
     assert window.path_value.objectName() == "currentSetPathValue"
-    assert window.song_value.wordWrap() is True
-    assert window.path_value.wordWrap() is True
+    assert isinstance(window.song_value, ElidedLabel)
+    assert isinstance(window.path_value, ElidedLabel)
 
 
 def test_progress_card_uses_bounded_status_components(window):
@@ -119,17 +120,18 @@ def test_main_content_scrolls_without_overlapping_export_and_progress(window, ap
 
     root_layout = window.centralWidget().layout()
     scroll_area = root_layout.itemAt(0).widget()
-    action_layout = root_layout.itemAt(root_layout.count() - 1).layout()
+    action_widget = root_layout.itemAt(root_layout.count() - 1).widget()
     export_card = window.key_input.parentWidget().parentWidget()
 
     assert scroll_area.objectName() == "mainScrollArea"
     assert export_card.geometry().bottom() < window.progress_card.geometry().top()
-    assert scroll_area.geometry().bottom() < action_layout.geometry().top()
+    assert scroll_area.geometry().bottom() < action_widget.geometry().top()
 
 
 def test_bottom_action_row_matches_button_hierarchy(window):
     window_layout = window.centralWidget().layout()
-    action_layout = window_layout.itemAt(window_layout.count() - 1).layout()
+    action_widget = window_layout.itemAt(window_layout.count() - 1).widget()
+    action_layout = action_widget.layout()
     buttons = [action_layout.itemAt(index).widget() for index in range(action_layout.count())]
 
     assert [button.text() for button in buttons] == [
@@ -167,9 +169,9 @@ def test_scan_success_updates_current_set_values(window, monkeypatch):
 
     window._handle_scan_success(state, project)
 
-    assert window.song_value.text() == "Neon Tide"
+    assert window.song_value.fullText() == "Neon Tide"
     assert window.bpm_value.text() == "128"
-    assert window.path_value.text() == str(project.project_folder)
+    assert window.path_value.fullText() == str(project.project_folder)
     assert window.progress_label.text() == "Scan complete"
     assert window.progress_card.property("progressState") == "idle"
     assert window.summary_label.text() == "Detected 2 stems."
@@ -219,9 +221,9 @@ def test_scan_failure_keeps_current_set_values_and_updates_status(window, monkey
     message = "Ableton Live is not reachable."
     window._handle_scan_failure(message)
 
-    assert window.song_value.text() == "Existing Song"
+    assert window.song_value.fullText() == "Existing Song"
     assert window.bpm_value.text() == "121"
-    assert window.path_value.text() == "/Users/c4milo/Music/Ableton/Projects/Existing Song"
+    assert window.path_value.fullText() == "/Users/c4milo/Music/Ableton/Projects/Existing Song"
     assert window.progress_label.text() == "Scan failed"
     assert window.progress_card.property("progressState") == "scan-failed"
     assert window.progress_status_module.property("progressState") == "scan-failed"
@@ -286,3 +288,84 @@ def test_cancelled_export_keeps_cancelled_state(window, tmp_path):
     assert window.progress_card.property("progressState") == "cancelled"
     assert window.progress_bar.value() == 1
     assert "Cancelled after exporting 1/3 stems" in window.summary_label.text()
+
+
+# --- Responsive design tests ---
+
+
+def test_compact_mode_stacks_form_rows(window, app):
+    window.resize(300, 380)
+    window.show()
+    app.processEvents()
+
+    for rw in window.current_row_widgets:
+        assert isinstance(rw.layout(), QVBoxLayout), "Current set rows should stack vertically in compact mode"
+
+    for rw in window.export_row_widgets:
+        assert isinstance(rw.layout(), QVBoxLayout), "Export rows should stack vertically in compact mode"
+
+
+def test_responsive_layout_uses_readable_minimum_and_breakpoint(window):
+    assert window.minimumSize() == QSize(*main_window_module.MIN_WINDOW_SIZE)
+    assert main_window_module._uses_compact_layout(QSize(300, 380)) is True
+    assert main_window_module._uses_compact_layout(QSize(520, 650)) is False
+
+
+def test_compact_mode_restores_horizontal_rows(window, app):
+    window.resize(300, 380)
+    window.show()
+    app.processEvents()
+
+    window.resize(540, 680)
+    app.processEvents()
+
+    for rw in window.current_row_widgets:
+        assert isinstance(rw.layout(), QHBoxLayout), "Current set rows should be horizontal at normal size"
+
+    for rw in window.export_row_widgets:
+        assert isinstance(rw.layout(), QHBoxLayout), "Export rows should be horizontal at normal size"
+
+
+def test_action_bar_becomes_grid_in_compact_mode(window, app):
+    window.resize(300, 380)
+    window.show()
+    app.processEvents()
+
+    assert isinstance(window.action_layout, QGridLayout), "Action bar should use grid layout in compact mode"
+
+
+def test_elided_label_shows_tooltip(app):
+    label = ElidedLabel("A very long song name that should definitely get truncated at some point")
+    label.setFixedWidth(80)
+    label.show()
+    app.processEvents()
+
+    assert label.fullText() == "A very long song name that should definitely get truncated at some point"
+    assert label.toolTip() != ""
+
+
+def test_preferences_dialog_accepts_scale(app):
+    prefs = Preferences(sticky_panel_position=False)
+    dialog = main_window_module.PreferencesDialog(prefs, scale=0.6)
+    assert dialog.minimumWidth() == max(280, round(440 * 0.6))
+    dialog.close()
+
+
+def test_preferences_dialog_naming_editor_round_trips_format(app):
+    prefs = Preferences(
+        stem_name_format="{song}_{track}.wav",
+        folder_name_format="{song} - Stems",
+        sticky_panel_position=False,
+    )
+    dialog = main_window_module.PreferencesDialog(prefs, scale=0.6)
+
+    dialog.stem_name_format.add_piece("text", " - ")
+    dialog.stem_name_format.add_piece("token", "bpm")
+
+    updated = dialog.to_preferences()
+
+    assert updated.stem_name_format == "{song}_{track}.wav - {bpm}"
+    assert updated.folder_name_format == "{song} - Stems"
+    assert "128" in dialog.stem_preview_label.text()
+    assert dialog.folder_preview_label.text() == "MySong - Stems"
+    dialog.close()

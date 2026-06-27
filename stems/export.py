@@ -83,11 +83,10 @@ class ExportAutomation:
     def _trigger_export_once(
         self,
         output_path: Path,
-        project_folder: Path,
+        _project_folder: Path,
         navigate_folder: bool = True,
         progress: ProgressCallback | None = None,
     ) -> bool:
-        del project_folder
         callback = progress or (lambda _event, _message: None)
         pyautogui = self.pyautogui
         pyautogui.FAILSAFE = False
