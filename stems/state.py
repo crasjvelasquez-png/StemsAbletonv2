@@ -46,7 +46,6 @@ class AppState:
             stems_dir = Path(destination_root) / stems_folder_name(
                 song, key, self.project.bpm, format_string=folder_name_format,
             )
-            stems_dir.mkdir(parents=True, exist_ok=True)
         return ExportJob(
             song_name=self.project.song_name,
             project_folder=self.project.project_folder,

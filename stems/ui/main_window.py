@@ -24,6 +24,7 @@ try:
         QGridLayout,
         QHBoxLayout,
         QLabel,
+        QLayout,
         QLineEdit,
         QListWidget,
         QListWidgetItem,
@@ -76,7 +77,8 @@ UI_BASE_SIZES = {
     "stem_checkbox_size": 18,
     "stem_status_width": 68,
     "export_min_height": 170,
-    "field_height": 28,
+    # Includes the stylesheet's content height, vertical padding, and border.
+    "field_height": 38,
     "export_label_width": 78,
     "field_spacing": 12,
     "card_margins": (14, 10, 14, 12),
@@ -272,6 +274,7 @@ class MainWindow(QMainWindow):
         self.panel_shadow_widgets: list[QWidget] = []
         self._ui_ready = False
         self._startup_scan = False
+        self._close_requested = False
 
         self._build_ui()
         self._ui_ready = True
@@ -301,6 +304,7 @@ class MainWindow(QMainWindow):
         scroll_content = QWidget()
         scroll_content.setObjectName("mainScrollContent")
         self.content_layout = QVBoxLayout(scroll_content)
+        self.content_layout.setSizeConstraint(QLayout.SetMinimumSize)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(int(self.ui_sizes["window_spacing"]))
 
@@ -482,10 +486,36 @@ class MainWindow(QMainWindow):
             for i, w in enumerate(widgets):
                 stretch = 1 if i == 0 else 0
                 row_layout.addWidget(w, stretch)
+                w.ensurePolished()
+            # QSS padding makes the controls taller than field_height. Without a
+            # row minimum, the export card can compress the layout while the
+            # controls continue painting at their minimum size into adjacent rows.
+            row_widget.setMinimumHeight(
+                max(
+                    int(self.ui_sizes["field_height"]),
+                    *(widget.sizeHint().height() for widget in widgets),
+                )
+            )
             self.export_row_widgets.append(row_widget)
             self.export_row_data.append((label, *widgets))
             self.export_options_layout.addWidget(row_widget)
 
+        row_heights = [row.minimumHeight() for row in self.export_row_widgets]
+        body_min_height = sum(row_heights) + self.export_options_layout.spacing() * (
+            len(row_heights) - 1
+        )
+        body.setMinimumHeight(body_min_height)
+        card_layout = section.layout()
+        margins = card_layout.contentsMargins()
+        title_height = card_layout.itemAt(0).widget().sizeHint().height()
+        content_min_height = (
+            margins.top()
+            + title_height
+            + card_layout.spacing()
+            + body_min_height
+            + margins.bottom()
+        )
+        section.setMinimumHeight(max(int(self.ui_sizes["export_min_height"]), content_min_height))
         return section
 
     def _build_progress_section(self) -> QWidget:
@@ -817,7 +847,7 @@ class MainWindow(QMainWindow):
         self._set_progress_state("scan-failed")
         self.progress_label.setText("Scan failed")
         self.summary_label.setText(message)
-        if not self._startup_scan:
+        if not self._startup_scan and not self._close_requested:
             QMessageBox.warning(self, "Scan failed", message)
         self._startup_scan = False
 
@@ -828,6 +858,7 @@ class MainWindow(QMainWindow):
         self.scan_thread = None
         self.scan_worker = None
         self.scan_button.setEnabled(True)
+        self._finish_deferred_close()
 
     def _populate_tracks(self, tracks: list[StemTrack]) -> None:
         self.track_list.clear()
@@ -1076,7 +1107,8 @@ class MainWindow(QMainWindow):
         self._set_progress_state("export-failed")
         self.progress_label.setText("Export failed")
         self.summary_label.setText(message)
-        QMessageBox.warning(self, "Export failed", message)
+        if not self._close_requested:
+            QMessageBox.warning(self, "Export failed", message)
 
     def _cleanup_export_thread(self, *_args) -> None:
         if self.export_thread is not None:
@@ -1087,6 +1119,22 @@ class MainWindow(QMainWindow):
         self.scan_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.update_destination_preview()
+        self._finish_deferred_close()
+
+    def _finish_deferred_close(self) -> None:
+        if self._close_requested and self.scan_thread is None and self.export_thread is None:
+            QTimer.singleShot(0, self.close)
+
+    def shutdown_workers(self) -> None:
+        """Finish active workers before QApplication tears down child QThreads."""
+        if self.export_worker is not None:
+            self.export_cancel_requested = True
+            self.export_worker.cancel()
+        for thread in (self.scan_thread, self.export_thread):
+            if thread is not None and thread.isRunning():
+                thread.quit()
+                thread.wait()
+        self.gateway.stop_listener()
 
     def copy_summary(self, *, notify: bool = True) -> None:
         if self.current_result is None:
@@ -1125,6 +1173,18 @@ class MainWindow(QMainWindow):
         self.preferences.launch_at_login = is_launch_agent_installed()
         self.preferences_store.save(self.preferences)
         if self.preferences.menubar_mode and self.tray_icon is not None and self.tray_icon.isVisible():
+            if self._close_requested:
+                self.gateway.stop_listener()
+                super().closeEvent(event)
+                return
+            event.ignore()
+            self.hide()
+            return
+        if self.scan_thread is not None or self.export_thread is not None:
+            self._close_requested = True
+            if self.export_worker is not None:
+                self.export_cancel_requested = True
+                self.export_worker.cancel()
             event.ignore()
             self.hide()
             return

@@ -128,6 +128,16 @@ def test_main_content_scrolls_without_overlapping_export_and_progress(window, ap
     assert scroll_area.geometry().bottom() < action_widget.geometry().top()
 
 
+def test_export_controls_stay_within_their_rows_when_window_is_constrained(window, app):
+    window.resize(504, 680)
+    window.show()
+    app.processEvents()
+
+    for row_widget, row_data in zip(window.export_row_widgets, window.export_row_data):
+        for control in row_data[1:]:
+            assert control.geometry().bottom() <= row_widget.contentsRect().bottom()
+
+
 def test_bottom_action_row_matches_button_hierarchy(window):
     window_layout = window.centralWidget().layout()
     action_widget = window_layout.itemAt(window_layout.count() - 1).widget()
@@ -369,3 +379,64 @@ def test_preferences_dialog_naming_editor_round_trips_format(app):
     assert "128" in dialog.stem_preview_label.text()
     assert dialog.folder_preview_label.text() == "MySong - Stems"
     dialog.close()
+
+
+def test_close_is_deferred_while_scan_thread_is_running(window):
+    event = SimpleNamespace(ignored=False)
+    event.ignore = lambda: setattr(event, "ignored", True)
+    window.scan_thread = object()
+    window.show()
+
+    window.closeEvent(event)
+
+    assert event.ignored is True
+    assert window._close_requested is True
+    assert window.isVisible() is False
+
+    window.scan_thread = None
+
+
+def test_deferred_close_runs_after_workers_finish(window, monkeypatch):
+    callbacks = []
+    monkeypatch.setattr(
+        main_window_module.QTimer,
+        "singleShot",
+        staticmethod(lambda _delay, callback: callbacks.append(callback)),
+    )
+    window._close_requested = True
+
+    window._finish_deferred_close()
+
+    assert len(callbacks) == 1
+    assert callbacks[0] == window.close
+
+
+def test_app_quit_waits_for_active_worker_threads(window):
+    class FakeThread:
+        def __init__(self):
+            self.quit_called = False
+            self.wait_called = False
+
+        def isRunning(self):
+            return True
+
+        def quit(self):
+            self.quit_called = True
+
+        def wait(self):
+            self.wait_called = True
+
+    scan_thread = FakeThread()
+    export_thread = FakeThread()
+    window.scan_thread = scan_thread
+    window.export_thread = export_thread
+
+    window.shutdown_workers()
+
+    assert scan_thread.quit_called is True
+    assert scan_thread.wait_called is True
+    assert export_thread.quit_called is True
+    assert export_thread.wait_called is True
+
+    window.scan_thread = None
+    window.export_thread = None

@@ -46,5 +46,5 @@ def test_app_state_builds_export_job_with_destination_root(tmp_path):
     job = state.build_export_job(key="C Major", replace_mode="replace", destination_root=destination_root)
 
     assert job.stems_dir == destination_root / stems_folder_name("Song", "C Major", 120)
-    assert job.stems_dir.exists()
+    assert not destination_root.exists()
     assert job.replace_mode == "replace"

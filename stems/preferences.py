@@ -36,6 +36,7 @@ class Preferences:
     panel_y: int | None = None
     stem_name_format: str = DEFAULT_STEM_NAME_FORMAT
     folder_name_format: str = DEFAULT_FOLDER_NAME_FORMAT
+    project_locations: dict[str, str] = field(default_factory=dict)
     recent_exports: list[RecentExport] = field(default_factory=list)
 
 
@@ -53,6 +54,21 @@ class PreferencesStore:
         return Preferences(**data)
 
     def save(self, preferences: Preferences) -> None:
+        if self.path.exists():
+            persisted_locations = self.load().project_locations
+            persisted_locations.update(preferences.project_locations)
+            preferences.project_locations = persisted_locations
+        self._write(preferences)
+
+    def set_project_location(self, song_name: str, folder: str | None) -> None:
+        preferences = self.load()
+        if folder is None:
+            preferences.project_locations.pop(song_name, None)
+        else:
+            preferences.project_locations[song_name] = folder
+        self._write(preferences)
+
+    def _write(self, preferences: Preferences) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = asdict(preferences)
         self.path.write_text(json.dumps(payload, indent=2))

@@ -13,6 +13,7 @@ def main() -> int:
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = MainWindow()
+    app.aboutToQuit.connect(window.shutdown_workers)
     window.show()
     return app.exec()
 

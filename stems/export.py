@@ -255,6 +255,7 @@ def execute_export_job(
         app_path_finder=export_automation.app_path_finder,
         script_runner=export_automation.script_runner,
     )
+    job.stems_dir.mkdir(parents=True, exist_ok=True)
     original_solos = {track.index: ableton_client.get_track_solo(track.index) for track in tracks}
 
     try:

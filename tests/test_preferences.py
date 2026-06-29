@@ -52,3 +52,24 @@ def test_append_recent_export_deduplicates_and_limits():
     )
     assert len(prefs.recent_exports) == 6
     assert prefs.recent_exports[0].summary == "updated"
+
+
+def test_save_preserves_project_locations_from_a_newer_disk_copy(tmp_path):
+    store = PreferencesStore(tmp_path / "preferences.json")
+    store.save(Preferences(project_locations={"Song": "/Volumes/SSD/Project"}))
+
+    stale_ui_preferences = Preferences(replace_mode="keep")
+    store.save(stale_ui_preferences)
+
+    loaded = store.load()
+    assert loaded.replace_mode == "keep"
+    assert loaded.project_locations == {"Song": "/Volumes/SSD/Project"}
+
+
+def test_set_project_location_can_remove_stale_entry(tmp_path):
+    store = PreferencesStore(tmp_path / "preferences.json")
+    store.save(Preferences(project_locations={"Song": "/Volumes/SSD/Project"}))
+
+    store.set_project_location("Song", None)
+
+    assert store.load().project_locations == {}

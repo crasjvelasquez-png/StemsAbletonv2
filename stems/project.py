@@ -3,13 +3,22 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import ProjectDetectionError
 from .naming import NEW_STEMS_PATTERN, stems_folder_name
+from .preferences import PreferencesStore
 
 
 logger = logging.getLogger("stems")
+
+
+@dataclass(frozen=True)
+class DiskSearchResult:
+    candidates: list[Path]
+    timed_out: bool = False
 
 
 def _bad_path(path: str | Path) -> bool:
@@ -22,7 +31,7 @@ def _bad_path(path: str | Path) -> bool:
     )
 
 
-def _find_als_on_disk(name: str, runner=subprocess.run, home: Path | None = None) -> list[Path]:
+def _find_als_on_disk(name: str, runner=subprocess.run, home: Path | None = None) -> DiskSearchResult:
     search_home = home or Path.home()
     search_roots = [
         search_home / "Music" / "Ableton",
@@ -38,6 +47,8 @@ def _find_als_on_disk(name: str, runner=subprocess.run, home: Path | None = None
         except OSError:
             pass
     seen: set[Path] = set()
+    candidates: list[Path] = []
+    timed_out = False
     for root in search_roots:
         if not root.exists() or root in seen:
             continue
@@ -50,12 +61,17 @@ def _find_als_on_disk(name: str, runner=subprocess.run, home: Path | None = None
                 text=True,
                 timeout=10,
             )
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            continue
         except Exception:
             continue
-        candidates = [Path(path) for path in result.stdout.strip().splitlines() if path and not _bad_path(path)]
-        if candidates:
-            return candidates
-    return []
+        candidates.extend(
+            Path(path)
+            for path in result.stdout.strip().splitlines()
+            if path and not _bad_path(path)
+        )
+    return DiskSearchResult(candidates=candidates, timed_out=timed_out)
 
 
 def _read_live_window_title(runner=subprocess.run) -> str | None:
@@ -134,52 +150,120 @@ def _is_ableton_not_open_error(errors: list[str]) -> bool:
     return False
 
 
-def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[Path, str]:
+def _valid_candidate(path: Path, name: str) -> bool:
+    return path.name == f"{name}.als" and path.is_file() and not _bad_path(path)
+
+
+def _cached_candidate(name: str, preferences_store: PreferencesStore) -> tuple[Path | None, str | None]:
+    preferences = preferences_store.load()
+    cached_folder = preferences.project_locations.get(name)
+    if not cached_folder:
+        return None, None
+
+    candidate = Path(cached_folder) / f"{name}.als"
+    if _valid_candidate(candidate, name):
+        return candidate, None
+
+    missing_volume = None
+    parts = Path(cached_folder).parts
+    if len(parts) >= 3 and parts[1] == "Volumes" and not Path(*parts[:3]).exists():
+        missing_volume = parts[2]
+
+    preferences_store.set_project_location(name, None)
+    return None, missing_volume
+
+
+def _cache_candidate(name: str, path: Path, preferences_store: PreferencesStore) -> None:
+    if preferences_store.load().project_locations.get(name) == str(path.parent):
+        return
+    preferences_store.set_project_location(name, str(path.parent))
+
+
+def _spotlight_candidates(name: str, runner=subprocess.run) -> list[Path]:
+    escaped = name.replace("\\", "\\\\").replace('"', '\\"')
+    result = runner(
+        ["mdfind", f'kMDItemFSName == "{escaped}.als"'],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    paths = [Path(path) for path in result.stdout.strip().splitlines() if path]
+    candidates = [path for path in paths if _valid_candidate(path, name)]
+    candidates.extend(
+        candidate
+        for path in paths
+        if (candidate := _project_from_backup_candidate(path, name)) is not None
+    )
+    return candidates
+
+
+def get_project_info(
+    runner=subprocess.run,
+    finder=_find_als_on_disk,
+    preferences_store: PreferencesStore | None = None,
+    sleeper=time.sleep,
+    spotlight_attempts: int = 3,
+    spotlight_delay: float = 0.4,
+) -> tuple[Path, str]:
     song_name, title_errors = _read_live_window_title_with_errors(runner)
 
     if not song_name:
-        if _is_ableton_not_open_error(title_errors):
-            raise ProjectDetectionError("Ableton is not open")
         if _is_accessibility_error(title_errors):
             raise ProjectDetectionError(
                 "Stems needs Accessibility permission to read Ableton's project name.\n\n"
                 "Go to System Settings → Privacy & Security → Accessibility,\n"
                 "then enable Stems and relaunch the app."
             )
+        if _is_ableton_not_open_error(title_errors):
+            raise ProjectDetectionError("Ableton is not open")
         detail = ""
         if title_errors:
             detail = f" Last AppleScript error: {title_errors[-1]}"
         raise ProjectDetectionError(f"Could not read project name from Ableton's window title.{detail}")
 
-    candidates: list[Path] = []
-    try:
-        escaped = song_name.replace('"', '\\"')
-        result = runner(
-            ["mdfind", f'kMDItemFSName == "{escaped}.als"'],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        mdfind_paths = [Path(path) for path in result.stdout.strip().splitlines() if path]
-        candidates = [path for path in mdfind_paths if not _bad_path(path)]
-        if not candidates:
-            candidates = [
-                candidate
-                for path in mdfind_paths
-                if (candidate := _project_from_backup_candidate(path, song_name)) is not None
-            ]
-    except Exception:
-        candidates = []
+    store = preferences_store or PreferencesStore()
+    cached, missing_volume = _cached_candidate(song_name, store)
+    if cached is not None:
+        return cached.parent, cached.stem
 
+    candidates: list[Path] = []
+    for attempt in range(max(1, spotlight_attempts)):
+        try:
+            candidates = _spotlight_candidates(song_name, runner)
+        except Exception:
+            candidates = []
+        if candidates:
+            break
+        if attempt + 1 < spotlight_attempts:
+            sleeper(spotlight_delay)
+
+    search_timed_out = False
     if not candidates:
         logger.info("  (Spotlight didn't find '%s.als', searching disk...)", song_name)
-        candidates = finder(song_name)
+        search_result = finder(song_name)
+        if isinstance(search_result, DiskSearchResult):
+            candidates = search_result.candidates
+            search_timed_out = search_result.timed_out
+        else:
+            candidates = search_result
 
     if not candidates:
+        if missing_volume:
+            raise ProjectDetectionError(
+                f"The drive '{missing_volume}' containing '{song_name}.als' is not mounted. Connect it and scan again."
+            )
+        if search_timed_out:
+            raise ProjectDetectionError(
+                f"Searching for '{song_name}.als' timed out. The drive may be slow or unavailable; reconnect it and scan again."
+            )
         raise ProjectDetectionError(f"Could not find '{song_name}.als' on disk. Save the project first.")
 
+    candidates = [path for path in candidates if _valid_candidate(path, song_name)]
+    if not candidates:
+        raise ProjectDetectionError(f"Could not find '{song_name}.als' on disk. Save the project first.")
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     als_path = candidates[0]
+    _cache_candidate(song_name, als_path, store)
     return als_path.parent, als_path.stem
 
 
@@ -208,6 +292,4 @@ def get_stems_folder(
     format_string: str | None = None,
 ) -> Path:
     folder_name = stems_folder_name(song_name, key, bpm, format_string=format_string)
-    stems_dir = project_folder / folder_name
-    stems_dir.mkdir(parents=True, exist_ok=True)
-    return stems_dir
+    return project_folder / folder_name

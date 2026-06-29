@@ -43,17 +43,19 @@ class FakeExportAutomation:
 
 
 def test_execute_export_job_exports_selected_tracks(tmp_path):
+    stems_dir = tmp_path / "new" / "stems"
     job = ExportJob(
         song_name="Song",
         project_folder=tmp_path,
-        stems_dir=tmp_path,
+        stems_dir=stems_dir,
         tracks=[StemTrack(index=0, name="DRUMS"), StemTrack(index=1, name="BASS")],
         replace_mode="replace",
     )
+    assert not stems_dir.exists()
     result = execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
     assert result.success_count == 2
-    assert (tmp_path / "Song_DRUMS -   BPM.wav").exists()
-    assert (tmp_path / "Song_BASS -   BPM.wav").exists()
+    assert (stems_dir / "Song_DRUMS -   BPM.wav").exists()
+    assert (stems_dir / "Song_BASS -   BPM.wav").exists()
 
 
 def test_verify_exported_file_rejects_empty_files(tmp_path):
