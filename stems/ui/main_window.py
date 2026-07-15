@@ -13,20 +13,20 @@ from ..reporting import build_export_summary
 from ..state import AppState
 
 try:
-    from PySide6.QtCore import QSize, QThread, QTimer, Qt
-    from PySide6.QtGui import QColor, QIcon
+    from PySide6.QtCore import QPointF, QSize, QThread, QTimer, Qt
+    from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import (
         QAbstractItemView,
         QCheckBox,
         QComboBox,
         QFileDialog,
-        QGraphicsDropShadowEffect,
         QHBoxLayout,
         QLabel,
         QLineEdit,
         QListWidget,
         QListWidgetItem,
         QFrame,
+        QGridLayout,
         QMainWindow,
         QMenu,
         QMessageBox,
@@ -70,8 +70,9 @@ UI_BASE_SIZES = {
     "stem_index_width": 30,
     "stem_checkbox_size": 18,
     "stem_status_width": 68,
-    "export_min_height": 170,
-    "field_height": 28,
+    "export_min_height": 218,
+    # Includes stylesheet padding and borders; keep layout rows at the rendered control height.
+    "field_height": 38,
     "export_label_width": 78,
     "field_spacing": 12,
     "card_margins": (14, 10, 14, 12),
@@ -89,9 +90,7 @@ UI_BASE_SIZES = {
     "progress_summary_max_height": 60,
     "action_margins": (0, 8, 0, 0),
     "action_spacing": 12,
-    "action_height": 30,
-    "shadow_blur": 20,
-    "shadow_offset": 8,
+    "action_height": 36,
 }
 
 
@@ -106,7 +105,13 @@ def _scaled_value(value: int | tuple[int, ...], scale: float) -> int | tuple[int
 
 
 def ui_sizes_for_scale(scale: float) -> dict[str, int | tuple[int, ...]]:
-    return {key: _scaled_value(value, scale) for key, value in UI_BASE_SIZES.items()}
+    sizes = {key: _scaled_value(value, scale) for key, value in UI_BASE_SIZES.items()}
+    sizes["header_button"] = max(28, int(sizes["header_button"]))
+    sizes["stem_checkbox_size"] = max(24, int(sizes["stem_checkbox_size"]))
+    sizes["stem_row_height"] = max(36, int(sizes["stem_row_height"]))
+    sizes["field_height"] = max(34, int(sizes["field_height"]))
+    sizes["action_height"] = max(32, int(sizes["action_height"]))
+    return sizes
 
 
 def _resource_path(*parts: str) -> Path:
@@ -116,6 +121,38 @@ def _resource_path(*parts: str) -> Path:
 
 def _app_icon() -> QIcon:
     return QIcon(str(_resource_path("assets", "logo", "stems-tower.png")))
+
+
+def _sliders_icon(size: int = 16) -> QIcon:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(QColor("#aab3c0"))
+    pen.setWidthF(1.5)
+    painter.setPen(pen)
+    painter.setBrush(QColor("#aab3c0"))
+    for y, knob_x in ((4.0, 10.5), (8.0, 5.5), (12.0, 9.0)):
+        painter.drawLine(QPointF(2.0, y), QPointF(size - 2.0, y))
+        painter.drawEllipse(QPointF(knob_x, y), 1.7, 1.7)
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _check_icon(size: int = 12) -> QIcon:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(QColor("#8dd0f5"))
+    pen.setWidthF(1.8)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    painter.setPen(pen)
+    painter.drawLine(QPointF(2.0, 6.2), QPointF(5.0, 9.0))
+    painter.drawLine(QPointF(5.0, 9.0), QPointF(10.2, 3.0))
+    painter.end()
+    return QIcon(pixmap)
 
 
 class StemTrackRow(QWidget):
@@ -155,6 +192,7 @@ class StemTrackRow(QWidget):
         self.checkbox.setObjectName("stemRowCheckbox")
         self.checkbox.setChecked(track.selected)
         self.checkbox.setToolTip(f"Export {track.name}")
+        self.checkbox.setAccessibleName(self.checkbox.toolTip())
         self.checkbox.toggled.connect(self._sync_check_icon)
         self._sync_check_icon(track.selected)
 
@@ -192,7 +230,9 @@ class StemTrackRow(QWidget):
         self.status_label.setMinimumWidth(int(sizes["stem_status_width"]))
 
     def _sync_check_icon(self, checked: bool) -> None:
-        self.checkbox.setText("✓" if checked else "")
+        self.checkbox.setText("")
+        self.checkbox.setIcon(_check_icon() if checked else QIcon())
+        self.checkbox.setIconSize(QSize(12, 12))
 
 
 class MainWindow(QMainWindow):
@@ -223,7 +263,6 @@ class MainWindow(QMainWindow):
         self.tray_icon: QSystemTrayIcon | None = None
         self.export_cancel_requested = False
         self.card_layouts: list[QVBoxLayout] = []
-        self.panel_shadow_widgets: list[QWidget] = []
         self._ui_ready = False
         self._startup_scan = False
 
@@ -276,9 +315,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.preferences_button = QPushButton("⚙")
+        self.preferences_button = QPushButton()
         self.preferences_button.setObjectName("headerAction")
         self.preferences_button.setToolTip("Preferences")
+        self.preferences_button.setAccessibleName(self.preferences_button.toolTip())
+        self.preferences_button.setIcon(_sliders_icon())
+        self.preferences_button.setIconSize(QSize(16, 16))
         header_button = int(self.ui_sizes["header_button"])
         self.preferences_button.setFixedSize(QSize(header_button, header_button))
         self.preferences_button.clicked.connect(self.show_preferences)
@@ -455,7 +497,6 @@ class MainWindow(QMainWindow):
         section = QWidget()
         section.setObjectName("progressCard")
         section.setAttribute(Qt.WA_StyledBackground, True)
-        self._apply_panel_shadow(section)
         self.progress_card = section
 
         self.progress_layout = QVBoxLayout(section)
@@ -545,8 +586,8 @@ class MainWindow(QMainWindow):
         self._set_progress_state("idle")
         return section
 
-    def _build_action_row(self) -> QHBoxLayout:
-        actions = QHBoxLayout()
+    def _build_action_row(self) -> QGridLayout:
+        actions = QGridLayout()
         actions.setContentsMargins(*self.ui_sizes["action_margins"])
         actions.setSpacing(int(self.ui_sizes["action_spacing"]))
         self.scan_button = QPushButton("Scan Current Set")
@@ -570,17 +611,51 @@ class MainWindow(QMainWindow):
             button.setProperty("actionBarButton", True)
             button.setMinimumHeight(int(self.ui_sizes["action_height"]))
             button.setMaximumHeight(int(self.ui_sizes["action_height"]))
-        actions.addWidget(self.scan_button, 1)
-        actions.addWidget(self.open_button, 1)
-        actions.addWidget(self.cancel_button, 1)
-        actions.addWidget(self.export_button, 1)
+        actions.addWidget(self.scan_button, 0, 0)
+        actions.addWidget(self.open_button, 0, 1)
+        actions.addWidget(self.cancel_button, 0, 2)
+        actions.addWidget(self.export_button, 0, 3)
+        actions.setColumnStretch(0, 4)
+        actions.setColumnStretch(1, 3)
+        actions.setColumnStretch(2, 2)
+        actions.setColumnStretch(3, 3)
+        self._refresh_action_hierarchy()
         return actions
+
+    def _arrange_action_buttons(self, compact: bool) -> None:
+        for button in self.action_buttons:
+            self.action_layout.removeWidget(button)
+        if compact:
+            positions = ((0, 0), (0, 1), (1, 0), (1, 1))
+            for button, (row, column) in zip(self.action_buttons, positions):
+                self.action_layout.addWidget(button, row, column)
+            self.action_layout.setColumnStretch(0, 1)
+            self.action_layout.setColumnStretch(1, 1)
+            self.action_layout.setColumnStretch(2, 0)
+            self.action_layout.setColumnStretch(3, 0)
+        else:
+            for column, button in enumerate(self.action_buttons):
+                self.action_layout.addWidget(button, 0, column)
+            for column, stretch in enumerate((4, 3, 2, 3)):
+                self.action_layout.setColumnStretch(column, stretch)
+
+    def _set_export_enabled(self, enabled: bool) -> None:
+        self.export_button.setEnabled(enabled)
+        self._refresh_action_hierarchy()
+
+    def _refresh_action_hierarchy(self) -> None:
+        export_is_primary = self.export_button.isEnabled()
+        self.scan_button.setObjectName("secondary" if export_is_primary else "primaryAction")
+        self.export_button.setObjectName("primaryAction" if export_is_primary else "secondary")
+        for button in (self.scan_button, self.export_button):
+            button.style().unpolish(button)
+            button.style().polish(button)
+            button.update()
 
     def _build_card(self, title: str) -> tuple[QWidget, QWidget]:
         section = QWidget()
         section.setObjectName("card")
         section.setAttribute(Qt.WA_StyledBackground, True)
-        self._apply_panel_shadow(section)
         layout = QVBoxLayout(section)
         layout.setContentsMargins(*self.ui_sizes["card_margins"])
         layout.setSpacing(int(self.ui_sizes["card_spacing"]))
@@ -597,14 +672,6 @@ class MainWindow(QMainWindow):
         label = QLabel(text)
         label.setObjectName("muted")
         return label
-
-    def _apply_panel_shadow(self, widget: QWidget) -> None:
-        shadow = QGraphicsDropShadowEffect(widget)
-        shadow.setBlurRadius(int(self.ui_sizes["shadow_blur"]))
-        shadow.setOffset(0, int(self.ui_sizes["shadow_offset"]))
-        shadow.setColor(QColor(10, 12, 18, 72))
-        widget.setGraphicsEffect(shadow)
-        self.panel_shadow_widgets.append(widget)
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override name
         super().resizeEvent(event)
@@ -679,6 +746,7 @@ class MainWindow(QMainWindow):
 
         self.action_layout.setContentsMargins(*self.ui_sizes["action_margins"])
         self.action_layout.setSpacing(int(self.ui_sizes["action_spacing"]))
+        self._arrange_action_buttons(self.width() < 460)
         action_height = int(self.ui_sizes["action_height"])
         for button in self.action_buttons:
             button.setMinimumHeight(action_height)
@@ -687,12 +755,6 @@ class MainWindow(QMainWindow):
         for layout in self.card_layouts:
             layout.setContentsMargins(*self.ui_sizes["card_margins"])
             layout.setSpacing(int(self.ui_sizes["card_spacing"]))
-        for widget in self.panel_shadow_widgets:
-            effect = widget.graphicsEffect()
-            if isinstance(effect, QGraphicsDropShadowEffect):
-                effect.setBlurRadius(int(self.ui_sizes["shadow_blur"]))
-                effect.setOffset(0, int(self.ui_sizes["shadow_offset"]))
-
         row_height = int(self.ui_sizes["stem_row_height"])
         for index in range(self.track_list.count()):
             item = self.track_list.item(index)
@@ -741,7 +803,7 @@ class MainWindow(QMainWindow):
         if self.scan_thread is not None:
             return
         self.scan_button.setEnabled(False)
-        self.export_button.setEnabled(False)
+        self._set_export_enabled(False)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self._set_progress_state("scanning")
@@ -773,7 +835,7 @@ class MainWindow(QMainWindow):
         self._set_progress_state("idle")
         self.progress_label.setText("Scan complete")
         self.summary_label.setText(f"Detected {count} stem{'s' if count != 1 else ''}.")
-        self.export_button.setEnabled(count > 0)
+        self._set_export_enabled(count > 0)
         self.open_button.setEnabled(self.current_job is not None or self.project is not None)
 
     def _handle_scan_failure(self, message: str) -> None:
@@ -845,7 +907,7 @@ class MainWindow(QMainWindow):
         )
         self.current_job = replace(job, tracks=tracks)
         self.destination_value.setText(self.current_job.stems_dir.name or "-")
-        self.export_button.setEnabled(bool(self.current_job.selected_tracks))
+        self._set_export_enabled(bool(self.current_job.selected_tracks))
         self.open_button.setEnabled(True)
 
     def choose_destination_folder(self) -> None:
@@ -916,7 +978,7 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Starting export...")
         self.summary_label.setText("Preparing per-stem export.")
         self.scan_button.setEnabled(False)
-        self.export_button.setEnabled(False)
+        self._set_export_enabled(False)
         self.cancel_button.setEnabled(True)
 
         self.export_thread = QThread(self)

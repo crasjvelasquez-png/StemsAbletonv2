@@ -3,21 +3,19 @@ from __future__ import annotations
 import re
 
 DESIGN_TOKENS = {
-    "bg_top": "#22252e",
-    "bg_mid": "#1e2129",
-    "bg_bottom": "#1a1d24",
-    "panel": "rgba(35, 38, 50, 0.48)",
-    "panel_soft": "rgba(30, 33, 44, 0.40)",
-    "panel_hover": "rgba(50, 54, 68, 0.38)",
-    "field": "rgba(24, 27, 36, 0.58)",
-    "field_hover": "rgba(32, 36, 48, 0.68)",
-    "border": "rgba(220, 230, 255, 0.10)",
-    "border_strong": "rgba(220, 230, 255, 0.18)",
-    "separator": "rgba(220, 230, 255, 0.08)",
-    "text": "rgba(244, 248, 252, 0.90)",
-    "text_strong": "rgba(250, 252, 255, 0.96)",
-    "text_muted": "rgba(221, 231, 242, 0.58)",
-    "text_faint": "rgba(221, 231, 242, 0.38)",
+    "background": "#181b22",
+    "panel": "#20242e",
+    "panel_soft": "#252a35",
+    "panel_hover": "#2b313d",
+    "field": "#171a21",
+    "field_hover": "#1c2029",
+    "border": "#343a47",
+    "border_strong": "#4a5363",
+    "separator": "#303642",
+    "text": "#e4e9ef",
+    "text_strong": "#f2f5f8",
+    "text_muted": "#aab3c0",
+    "text_faint": "#707a89",
     "accent": "#7cc4f0",
     "accent_hover": "#8dd0f5",
     "accent_pressed": "#6ab8e8",
@@ -25,7 +23,7 @@ DESIGN_TOKENS = {
     "warning": "#f5d56e",
     "danger": "#e85d5d",
     "accent_text": "#071522",
-    "menu": "#1e2129",
+    "menu": "#20242e",
     "radius_panel": "10px",
     "radius_control": "8px",
     "radius_pill": "11px",
@@ -37,24 +35,14 @@ DARK_STYLESHEET = f"""
 /* Core windows */
 QMainWindow,
 QDialog {{
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 1, y2: 1,
-        stop: 0 {DESIGN_TOKENS["bg_top"]},
-        stop: 0.52 {DESIGN_TOKENS["bg_mid"]},
-        stop: 1 {DESIGN_TOKENS["bg_bottom"]}
-    );
+    background-color: {DESIGN_TOKENS["background"]};
     font-family: {DESIGN_TOKENS["font_family"]};
     font-size: 13px;
 }}
 
 /* Central widget reference */
 QWidget#centralWidget {{
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 1, y2: 1,
-        stop: 0 {DESIGN_TOKENS["bg_top"]},
-        stop: 0.52 {DESIGN_TOKENS["bg_mid"]},
-        stop: 1 {DESIGN_TOKENS["bg_bottom"]}
-    );
+    background-color: {DESIGN_TOKENS["background"]};
 }}
 
 QScrollArea#mainScrollArea,
@@ -69,17 +57,12 @@ QWidget#appHeader {{
     background-color: transparent;
 }}
 
-/* Glass panels */
+/* Product surfaces */
 QWidget#card,
 QWidget#progressCard {{
     background-color: {DESIGN_TOKENS["panel"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_panel"]};
-}}
-
-QWidget#card:hover,
-QWidget#progressCard:hover {{
-    border-color: {DESIGN_TOKENS["border_strong"]};
 }}
 
 /* Section titles inside panels */
@@ -110,13 +93,13 @@ QLabel#destinationPath {{
 
 QLabel#currentSetLabel {{
     color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 400;
 }}
 
 QLabel#currentSetValue {{
     color: {DESIGN_TOKENS["text_strong"]};
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
 }}
 
@@ -144,7 +127,7 @@ QLineEdit:hover {{
 }}
 
 QLineEdit:focus {{
-    border: 1px solid rgba(124, 196, 240, 0.72);
+    border: 2px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QLineEdit:disabled {{
@@ -176,7 +159,7 @@ QComboBox:hover {{
 }}
 
 QComboBox:focus {{
-    border: 1px solid rgba(124, 196, 240, 0.72);
+    border: 2px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QComboBox:disabled {{
@@ -235,6 +218,10 @@ QPushButton:pressed {{
     border-color: rgba(124, 196, 240, 0.24);
 }}
 
+QPushButton:focus {{
+    border: 2px solid {DESIGN_TOKENS["accent"]};
+}}
+
 QPushButton:disabled {{
     background-color: rgba(32, 36, 48, 0.24);
     color: {DESIGN_TOKENS["text_faint"]};
@@ -242,22 +229,14 @@ QPushButton:disabled {{
 }}
 
 QPushButton#primaryAction {{
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 {DESIGN_TOKENS["accent_hover"]},
-        stop: 1 {DESIGN_TOKENS["accent_pressed"]}
-    );
+    background-color: {DESIGN_TOKENS["accent"]};
     color: {DESIGN_TOKENS["accent_text"]};
     border: 1px solid rgba(196, 232, 255, 0.62);
     font-weight: 600;
 }}
 
 QPushButton#primaryAction:hover {{
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 #a1dcfb,
-        stop: 1 {DESIGN_TOKENS["accent"]}
-    );
+    background-color: {DESIGN_TOKENS["accent_hover"]};
     border-color: rgba(220, 244, 255, 0.72);
 }}
 
@@ -359,8 +338,8 @@ QWidget#detectedStemsSection {{
 }}
 
 QWidget#stemListPanel {{
-    background-color: rgba(35, 38, 50, 0.34);
-    border: 1px solid rgba(220, 230, 255, 0.105);
+    background-color: {DESIGN_TOKENS["panel"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_panel"]};
 }}
 
@@ -437,15 +416,14 @@ QLabel#stemRowStatus[statusState="failed"] {{
 
 /* Progress */
 QWidget#progressStatusModule {{
-    background-color: rgba(24, 27, 36, 0.28);
-    border: 1px solid {DESIGN_TOKENS["border"]};
-    border-radius: {DESIGN_TOKENS["radius_control"]};
+    background-color: transparent;
+    border: none;
 }}
 
 QWidget#progressStatusModule[progressState="scan-failed"],
 QWidget#progressStatusModule[progressState="export-failed"] {{
-    background-color: rgba(232, 93, 93, 0.045);
-    border-color: rgba(232, 93, 93, 0.22);
+    background-color: transparent;
+    border: none;
 }}
 
 QWidget#progressStatusModule[progressState="export-complete"] {{
@@ -557,11 +535,7 @@ QProgressBar#progressBar {{
 }}
 
 QProgressBar#progressBar::chunk {{
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 1, y2: 0,
-        stop: 0 {DESIGN_TOKENS["accent_hover"]},
-        stop: 1 {DESIGN_TOKENS["accent_pressed"]}
-    );
+    background-color: {DESIGN_TOKENS["accent"]};
     border-radius: 3px;
 }}
 
@@ -607,33 +581,14 @@ QCheckBox {{
     font-size: 13px;
 }}
 
-QCheckBox::indicator {{
-    width: 17px;
-    height: 17px;
-    border-radius: 9px;
-    border: 1px solid rgba(124, 196, 240, 0.62);
-    background-color: rgba(124, 196, 240, 0.05);
-}}
-
-QCheckBox::indicator:hover {{
-    border-color: rgba(161, 220, 251, 0.78);
-    background-color: rgba(124, 196, 240, 0.11);
-}}
-
-QCheckBox::indicator:checked {{
-    background-color: rgba(124, 196, 240, 0.22);
-    border-color: {DESIGN_TOKENS["accent"]};
-}}
-
-QCheckBox::indicator:disabled {{
-    border-color: rgba(220, 230, 255, 0.13);
-    background-color: rgba(220, 230, 255, 0.04);
+QCheckBox:focus {{
+    color: {DESIGN_TOKENS["text_strong"]};
 }}
 
 QCheckBox#stemRowCheckbox {{
     background-color: rgba(124, 196, 240, 0.10);
     border: 1px solid rgba(124, 196, 240, 0.74);
-    border-radius: 11px;
+    border-radius: 6px;
     color: {DESIGN_TOKENS["accent_hover"]};
     font-size: 13px;
     font-weight: 600;
@@ -661,6 +616,125 @@ QCheckBox#stemRowCheckbox::indicator {{
 }}
 
 /* Menus and dialogs */
+QTabWidget::pane {{
+    background-color: {DESIGN_TOKENS["panel"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    border-radius: {DESIGN_TOKENS["radius_control"]};
+    top: -1px;
+}}
+
+QWidget#preferencesGeneral,
+QWidget#preferencesNaming {{
+    background-color: transparent;
+}}
+
+QFrame#namingPresetCard {{
+    background-color: {DESIGN_TOKENS["panel_soft"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    border-radius: {DESIGN_TOKENS["radius_control"]};
+}}
+
+QLabel#preferencesFieldTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-weight: 600;
+}}
+
+QLabel#preferencesSubLabel {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+QLabel#preferencesHint {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 13px;
+}}
+
+QLabel#preferencesError {{
+    color: #ffaaa4;
+    font-size: 12px;
+}}
+
+QLabel#presetDefaultBadge {{
+    background-color: rgba(124, 196, 240, 0.16);
+    color: {DESIGN_TOKENS["accent_hover"]};
+    border: 1px solid rgba(124, 196, 240, 0.42);
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+}}
+
+QPushButton#tokenButton {{
+    min-width: 54px;
+    padding: 5px 9px;
+    background-color: {DESIGN_TOKENS["field"]};
+    color: {DESIGN_TOKENS["accent_hover"]};
+    border: 1px solid {DESIGN_TOKENS["border_strong"]};
+    border-radius: 7px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 12px;
+}}
+
+QPushButton#tokenButton:hover {{
+    background-color: rgba(124, 196, 240, 0.14);
+    border-color: rgba(161, 220, 251, 0.72);
+}}
+
+QPushButton#tokenButton:pressed {{
+    background-color: rgba(124, 196, 240, 0.24);
+}}
+
+QPushButton#tokenButton:focus,
+QPushButton#presetSecondaryAction:focus,
+QPushButton#presetDefaultAction:focus {{
+    border-color: {DESIGN_TOKENS["accent"]};
+}}
+
+QPushButton#presetSecondaryAction,
+QPushButton#presetDefaultAction {{
+    min-height: 34px;
+    padding: 0 12px;
+}}
+
+QPushButton#presetDefaultAction {{
+    color: {DESIGN_TOKENS["accent_hover"]};
+    border-color: rgba(124, 196, 240, 0.56);
+}}
+
+QLabel#preferencesPreview {{
+    background-color: {DESIGN_TOKENS["field"]};
+    color: {DESIGN_TOKENS["text"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    border-radius: 6px;
+    padding: 10px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 13px;
+}}
+
+QTabBar::tab {{
+    background-color: {DESIGN_TOKENS["background"]};
+    color: {DESIGN_TOKENS["text_muted"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    border-bottom: none;
+    padding: 7px 16px;
+    margin-right: 4px;
+}}
+
+QTabBar::tab:selected {{
+    background-color: {DESIGN_TOKENS["panel"]};
+    color: {DESIGN_TOKENS["text_strong"]};
+}}
+
+QTabBar::tab:hover:!selected {{
+    background-color: {DESIGN_TOKENS["panel_soft"]};
+    color: {DESIGN_TOKENS["text"]};
+}}
+
+QTabBar::tab:focus {{
+    border-color: {DESIGN_TOKENS["accent"]};
+}}
+
 QMenu {{
     background-color: {DESIGN_TOKENS["menu"]};
     border: 1px solid {DESIGN_TOKENS["border_strong"]};
@@ -752,9 +826,11 @@ def stylesheet_for_scale(scale: float) -> str:
     key = round(scale, 2)
     if key not in _stylesheet_cache:
         def replace_px(match: re.Match[str]) -> str:
-            value = int(match.group(1))
+            property_name = match.group(1) or ""
+            value = int(match.group(2))
             if value == 0:
-                return "0px"
-            return f"{max(1, round(value * key))}px"
-        _stylesheet_cache[key] = re.sub(r"(\d+)px", replace_px, BASE_STYLESHEET)
+                return f"{property_name}0px"
+            applied_scale = max(0.9, key) if property_name else key
+            return f"{property_name}{max(1, round(value * applied_scale))}px"
+        _stylesheet_cache[key] = re.sub(r"(font-size:\s*)?(\d+)px", replace_px, BASE_STYLESHEET)
     return _stylesheet_cache[key]

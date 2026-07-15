@@ -7,11 +7,12 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QInputDialog, QMessageBox, QTabWidget, QWidget
 
 from stems.models import ExportItemResult, ExportJob, ExportResult, ProjectContext, StemTrack
 from stems.preferences import Preferences
 from stems.ui import main_window as main_window_module
+from stems.ui.preferences_dialog import PreferencesDialog
 
 
 class DummyGateway:
@@ -145,10 +146,98 @@ def test_bottom_action_row_matches_button_hierarchy(window):
     assert window.export_button.isEnabled() is False
     assert action_layout.spacing() == 12
     assert all(button.property("actionBarButton") is True for button in buttons)
-    assert {button.minimumHeight() for button in buttons} == {30}
-    assert {button.maximumHeight() for button in buttons} == {30}
+    assert {button.minimumHeight() for button in buttons} == {36}
+    assert {button.maximumHeight() for button in buttons} == {36}
     assert window.preferences_button.objectName() == "headerAction"
     assert window.preferences_button not in buttons
+    assert window.preferences_button.text() == ""
+    assert not window.preferences_button.icon().isNull()
+    assert window.preferences_button.accessibleName() == "Preferences"
+
+
+def test_export_controls_remain_readable_and_separated_when_compact(window, app):
+    window.resize(360, 520)
+    window.show()
+    app.processEvents()
+
+    controls = (window.project_name_input, window.key_input, window.replace_mode)
+    assert all(control.height() >= 34 for control in controls)
+    assert window.key_input.geometry().top() > window.project_name_input.geometry().bottom()
+    assert window.replace_mode.geometry().top() > window.key_input.geometry().bottom()
+    assert window.preferences_button.width() >= 28
+    assert window.scan_button.height() >= 32
+    for button in window.action_buttons:
+        text_width = button.fontMetrics().horizontalAdvance(button.text())
+        assert button.width() >= text_width + 12
+    assert window.action_layout.itemAtPosition(1, 0).widget() is window.cancel_button
+    assert window.action_layout.itemAtPosition(1, 1).widget() is window.export_button
+
+
+def test_preferences_tabs_render_as_dark_product_surfaces(window, app):
+    dialog = PreferencesDialog(Preferences(), window)
+    dialog.show()
+    app.processEvents()
+
+    general = dialog.findChild(QWidget, "preferencesGeneral")
+    assert general is not None
+    image = general.grab().toImage()
+    center = image.pixelColor(image.width() // 2, image.height() // 2)
+    assert center.lightness() < 96
+
+    dialog.close()
+
+
+def test_naming_preferences_use_separate_presets_and_target_specific_tokens(window, app):
+    dialog = PreferencesDialog(Preferences(), window)
+    dialog.findChild(QTabWidget, "preferencesTabs").setCurrentIndex(1)
+    dialog.show()
+    app.processEvents()
+
+    assert dialog.stem_editor.preset_combo.count() == 3
+    assert dialog.folder_editor.preset_combo.count() == 3
+    assert [button.text() for button in dialog.stem_editor.token_buttons] == [
+        "{song}", "{track}", "{bpm}", "{key}", "{date}", "{index}",
+    ]
+    assert [button.text() for button in dialog.folder_editor.token_buttons] == [
+        "{song}", "{bpm}", "{key}", "{date}",
+    ]
+    assert dialog.stem_editor.default_badge.isVisible()
+    assert dialog.folder_editor.default_badge.isVisible()
+
+
+def test_naming_token_inserts_at_cursor_and_invalid_format_disables_ok(window, app):
+    dialog = PreferencesDialog(Preferences(), window)
+    dialog.stem_name_format.setText(".wav")
+    dialog.stem_name_format.setCursorPosition(0)
+    dialog.stem_editor.token_buttons[1].click()
+    app.processEvents()
+
+    assert dialog.stem_name_format.text() == "{track}.wav"
+    assert dialog.ok_button.isEnabled() is False  # Built-in edits must be saved as a custom preset.
+    dialog.stem_name_format.setText("{song}.wav")
+    assert "unique name" in dialog.stem_editor.error_label.text()
+    assert dialog.ok_button.isEnabled() is False
+
+
+def test_custom_naming_presets_can_be_created_and_defaulted(window, app, monkeypatch):
+    names = iter([("Client Delivery", True), ("Project Folder", True)])
+    monkeypatch.setattr(QInputDialog, "getText", lambda *_args, **_kwargs: next(names))
+    dialog = PreferencesDialog(Preferences(), window)
+
+    dialog.stem_name_format.setText("{index}_{track}_{song}.wav")
+    dialog.stem_editor._save_preset()
+    dialog.stem_editor._set_default()
+    dialog.folder_name_format.setText("{song} - Delivery")
+    dialog.folder_editor._save_preset()
+    dialog.folder_editor._set_default()
+    updated = dialog.to_preferences()
+
+    assert updated.stem_name_presets[0].name == "Client Delivery"
+    assert updated.folder_name_presets[0].name == "Project Folder"
+    assert updated.stem_name_format == "{index}_{track}_{song}.wav"
+    assert updated.folder_name_format == "{song} - Delivery"
+    assert updated.default_stem_name_preset_id.startswith("custom-stem-")
+    assert updated.default_folder_name_preset_id.startswith("custom-folder-")
 
 
 def test_scan_success_updates_current_set_values(window, monkeypatch):
@@ -174,6 +263,8 @@ def test_scan_success_updates_current_set_values(window, monkeypatch):
     assert window.progress_card.property("progressState") == "idle"
     assert window.summary_label.text() == "Detected 2 stems."
     assert window.export_button.isEnabled() is True
+    assert window.export_button.objectName() == "primaryAction"
+    assert window.scan_button.objectName() == "secondary"
 
 
 def test_export_button_tracks_selected_stems(window):
