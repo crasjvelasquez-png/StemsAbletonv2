@@ -9,6 +9,7 @@ from .automation import find_ableton_app_path, osascript, wait_for_live_window
 from .errors import DependencyError, ExportAutomationError
 from .models import ExportItemResult, ExportJob, ExportResult
 from .naming import escape_applescript, stem_file_name
+from .project import rename_old_stems_folders
 from .preflight import run_export_preflight
 
 
@@ -256,6 +257,9 @@ def execute_export_job(
         app_path_finder=export_automation.app_path_finder,
         script_runner=export_automation.script_runner,
     )
+    if job.stems_dir.parent.resolve() == job.project_folder.resolve():
+        rename_old_stems_folders(job.project_folder, job.stems_dir.name)
+    job.stems_dir.mkdir(parents=True, exist_ok=True)
     original_solos = {track.index: ableton_client.get_track_solo(track.index) for track in tracks}
 
     try:

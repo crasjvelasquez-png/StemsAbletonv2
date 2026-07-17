@@ -46,5 +46,24 @@ def test_app_state_builds_export_job_with_destination_root(tmp_path):
     job = state.build_export_job(key="C Major", replace_mode="replace", destination_root=destination_root)
 
     assert job.stems_dir == destination_root / stems_folder_name("Song", "C Major", 120)
-    assert job.stems_dir.exists()
+    assert not destination_root.exists()
     assert job.replace_mode == "replace"
+
+
+def test_app_state_preview_updates_do_not_create_incremental_folders(tmp_path):
+    project_folder = tmp_path / "Project"
+    project_folder.mkdir()
+    state = AppState(
+        FakeAbletonClient(),
+        project_info_getter=lambda: (project_folder, "Song"),
+    )
+    state.scan_current_set()
+
+    previews = [
+        state.build_export_job(custom_song_name=name, key=key).stems_dir
+        for name, key in (("Q", None), ("Quer", "C"), ("Querida", "C Minor"))
+    ]
+
+    assert len(set(previews)) == 3
+    assert all(not preview.exists() for preview in previews)
+    assert list(project_folder.iterdir()) == []

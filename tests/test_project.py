@@ -92,3 +92,9 @@ def test_get_stems_folder_creates_directory(tmp_path):
     stems_dir = project.get_stems_folder(tmp_path, "Song", None, 120)
     assert stems_dir.exists()
     assert stems_dir.parent == tmp_path
+
+
+def test_stems_folder_path_does_not_create_directory(tmp_path):
+    stems_dir = project.stems_folder_path(tmp_path, "Song", "C Major", 120)
+    assert stems_dir.parent == tmp_path
+    assert not stems_dir.exists()

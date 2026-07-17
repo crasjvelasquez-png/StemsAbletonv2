@@ -4,12 +4,11 @@ from pathlib import Path
 
 from .detection import find_bus_tracks
 from .models import ExportJob, ProjectContext, StemTrack
-from .naming import stems_folder_name
-from .project import get_project_info, get_stems_folder
+from .project import get_project_info, stems_folder_path
 
 
 class AppState:
-    def __init__(self, ableton_client, project_info_getter=get_project_info, stems_folder_getter=get_stems_folder):
+    def __init__(self, ableton_client, project_info_getter=get_project_info, stems_folder_getter=stems_folder_path):
         self.ableton_client = ableton_client
         self.project_info_getter = project_info_getter
         self.stems_folder_getter = stems_folder_getter
@@ -38,15 +37,10 @@ class AppState:
         if self.project is None:
             raise RuntimeError("scan_current_set() must run before build_export_job().")
         song = custom_song_name or self.project.song_name
-        if destination_root is None:
-            stems_dir = self.stems_folder_getter(
-                self.project.project_folder, song, key, self.project.bpm, format_string=folder_name_format,
-            )
-        else:
-            stems_dir = Path(destination_root) / stems_folder_name(
-                song, key, self.project.bpm, format_string=folder_name_format,
-            )
-            stems_dir.mkdir(parents=True, exist_ok=True)
+        stems_root = self.project.project_folder if destination_root is None else Path(destination_root)
+        stems_dir = self.stems_folder_getter(
+            stems_root, song, key, self.project.bpm, format_string=folder_name_format,
+        )
         return ExportJob(
             song_name=self.project.song_name,
             project_folder=self.project.project_folder,

@@ -66,8 +66,7 @@ QWidget#progressCard {{
 }}
 
 /* Section titles inside panels */
-QLabel#cardTitle,
-QLabel#progressTitle {{
+QLabel#cardTitle {{
     color: {DESIGN_TOKENS["text"]};
     font-size: 14px;
     font-weight: 500;
@@ -107,6 +106,63 @@ QLabel#currentSetPathValue {{
     color: {DESIGN_TOKENS["text"]};
     font-size: 13px;
     font-weight: 400;
+}}
+
+/* Export confirmation */
+QLabel#exportConfirmationHeading {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-size: 20px;
+    font-weight: 600;
+}}
+
+QLabel#exportConfirmationSupporting {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QLabel#exportConfirmationMetadataLabel {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 12px;
+    font-weight: 500;
+}}
+
+QLabel#exportConfirmationDestination {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-size: 16px;
+    font-weight: 600;
+}}
+
+QLabel#exportConfirmationDestinationParent {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#exportConfirmationMode {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QLabel#exportConfirmationMode[modeState="replace"] {{
+    color: {DESIGN_TOKENS["warning"]};
+}}
+
+QLabel#exportConfirmationTrackList {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QScrollArea#exportConfirmationTrackScroll {{
+    background-color: transparent;
+    border: none;
+}}
+
+QFrame#exportConfirmationSeparator {{
+    background-color: {DESIGN_TOKENS["separator"]};
+    color: {DESIGN_TOKENS["separator"]};
 }}
 
 /* Inputs */
@@ -415,120 +471,30 @@ QLabel#stemRowStatus[statusState="failed"] {{
 }}
 
 /* Progress */
-QWidget#progressStatusModule {{
+QLabel#progressStatus {{
+    color: {DESIGN_TOKENS["text_strong"]};
     background-color: transparent;
     border: none;
-}}
-
-QWidget#progressStatusModule[progressState="scan-failed"],
-QWidget#progressStatusModule[progressState="export-failed"] {{
-    background-color: transparent;
-    border: none;
-}}
-
-QWidget#progressStatusModule[progressState="export-complete"] {{
-    border-color: rgba(114, 227, 157, 0.18);
-}}
-
-QWidget#progressStatusModule[progressState="cancelling"],
-QWidget#progressStatusModule[progressState="cancelled"] {{
-    border-color: rgba(245, 213, 110, 0.20);
-}}
-
-QLabel#progressStatusIcon {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    background-color: rgba(220, 230, 255, 0.055);
-    border: 1px solid rgba(220, 230, 255, 0.13);
-    border-radius: 13px;
-    font-size: 12px;
-    font-weight: 600;
-}}
-
-QLabel#progressStatusIcon[progressState="scanning"],
-QLabel#progressStatusIcon[progressState="export-starting"],
-QLabel#progressStatusIcon[progressState="export-in-progress"] {{
-    color: {DESIGN_TOKENS["accent"]};
-    background-color: rgba(124, 196, 240, 0.08);
-    border-color: rgba(124, 196, 240, 0.34);
-}}
-
-QLabel#progressStatusIcon[progressState="export-complete"] {{
-    color: {DESIGN_TOKENS["success"]};
-    background-color: rgba(114, 227, 157, 0.08);
-    border-color: rgba(114, 227, 157, 0.30);
-}}
-
-QLabel#progressStatusIcon[progressState="scan-failed"],
-QLabel#progressStatusIcon[progressState="export-failed"] {{
-    color: {DESIGN_TOKENS["danger"]};
-    background-color: rgba(232, 93, 93, 0.08);
-    border-color: rgba(232, 93, 93, 0.38);
-}}
-
-QLabel#progressStatusIcon[progressState="cancelling"],
-QLabel#progressStatusIcon[progressState="cancelled"] {{
-    color: {DESIGN_TOKENS["warning"]};
-    background-color: rgba(245, 213, 110, 0.08);
-    border-color: rgba(245, 213, 110, 0.30);
-}}
-
-QLabel#progressStatePill {{
-    border: none;
-    border-radius: {DESIGN_TOKENS["radius_pill"]};
     font-size: 14px;
     font-weight: 500;
-    padding: 2px 0px;
 }}
 
-QLabel#progressStatePill[progressState="idle"] {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    background-color: transparent;
-}}
-
-QLabel#progressStatePill[progressState="scanning"],
-QLabel#progressStatePill[progressState="export-starting"],
-QLabel#progressStatePill[progressState="export-in-progress"] {{
-    color: {DESIGN_TOKENS["accent"]};
-    background-color: transparent;
-}}
-
-QLabel#progressStatePill[progressState="export-complete"] {{
-    color: {DESIGN_TOKENS["success"]};
-    background-color: transparent;
-}}
-
-QLabel#progressStatePill[progressState="scan-failed"],
-QLabel#progressStatePill[progressState="export-failed"] {{
+QLabel#progressStatus[progressState="scan-failed"],
+QLabel#progressStatus[progressState="export-failed"] {{
     color: {DESIGN_TOKENS["danger"]};
-    background-color: transparent;
-}}
-
-QLabel#progressStatePill[progressState="cancelling"],
-QLabel#progressStatePill[progressState="cancelled"] {{
-    color: {DESIGN_TOKENS["warning"]};
-    background-color: transparent;
 }}
 
 QLabel#progressPercent {{
-    color: {DESIGN_TOKENS["text"]};
-    background-color: transparent;
-    font-size: 14px;
-    font-weight: 500;
-}}
-
-QLabel#progressPercent[progressState="idle"] {{
     color: {DESIGN_TOKENS["text_muted"]};
-}}
-
-QLabel#progressPercent[progressState="scan-failed"],
-QLabel#progressPercent[progressState="export-failed"] {{
-    color: rgba(244, 248, 252, 0.82);
+    background-color: transparent;
+    font-size: 13px;
+    font-weight: 400;
 }}
 
 QProgressBar#progressBar {{
-    background-color: rgba(220, 230, 255, 0.10);
-    border: 1px solid rgba(220, 230, 255, 0.075);
-    border-radius: 3px;
+    background-color: rgba(220, 230, 255, 0.09);
+    border: none;
+    border-radius: 2px;
     color: transparent;
     min-height: 4px;
     max-height: 4px;
@@ -536,42 +502,18 @@ QProgressBar#progressBar {{
 
 QProgressBar#progressBar::chunk {{
     background-color: {DESIGN_TOKENS["accent"]};
-    border-radius: 3px;
+    border-radius: 2px;
 }}
 
-QProgressBar#progressBar[progressState="idle"]::chunk {{
-    background-color: rgba(220, 230, 255, 0.24);
-}}
-
-QProgressBar#progressBar[progressState="export-complete"]::chunk {{
-    background-color: {DESIGN_TOKENS["success"]};
-}}
-
-QProgressBar#progressBar[progressState="scan-failed"]::chunk,
-QProgressBar#progressBar[progressState="export-failed"]::chunk {{
-    background-color: rgba(232, 93, 93, 0.74);
-}}
-
-QProgressBar#progressBar[progressState="cancelling"]::chunk,
-QProgressBar#progressBar[progressState="cancelled"]::chunk {{
-    background-color: {DESIGN_TOKENS["warning"]};
-}}
-
-QScrollArea#progressSummaryArea,
-QWidget#progressSummaryBody {{
-    background-color: transparent;
-    border: none;
-}}
-
-QLabel#progressSummary {{
+QLabel#progressDetail {{
     color: {DESIGN_TOKENS["text_muted"]};
     font-size: 13px;
     font-weight: 400;
 }}
 
-QLabel#progressSummary[progressState="scan-failed"],
-QLabel#progressSummary[progressState="export-failed"] {{
-    color: rgba(221, 231, 242, 0.72);
+QLabel#progressDetail[progressState="scan-failed"],
+QLabel#progressDetail[progressState="export-failed"] {{
+    color: {DESIGN_TOKENS["text_muted"]};
 }}
 
 /* Checkboxes */

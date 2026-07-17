@@ -19,6 +19,7 @@ try:
         QAbstractItemView,
         QCheckBox,
         QComboBox,
+        QDialog,
         QFileDialog,
         QHBoxLayout,
         QLabel,
@@ -43,6 +44,7 @@ except ImportError as exc:
 
 from ..login_item import install_launch_agent, is_launch_agent_installed, remove_launch_agent
 from .preferences_dialog import PreferencesDialog
+from .export_confirmation_dialog import ExportConfirmationDialog
 from .theme import stylesheet_for_scale
 from .worker import ExportWorker, ScanWorker
 
@@ -77,17 +79,14 @@ UI_BASE_SIZES = {
     "field_spacing": 12,
     "card_margins": (14, 10, 14, 12),
     "card_spacing": 10,
-    "progress_margins": (14, 10, 14, 10),
-    "progress_spacing": 9,
-    "progress_header_spacing": 8,
-    "progress_module_margins": (14, 10, 14, 10),
-    "progress_module_spacing": 8,
-    "progress_icon_size": 20,
-    "progress_pill_width": 78,
+    "progress_margins": (16, 10, 16, 10),
+    "progress_spacing": 8,
+    "progress_header_spacing": 10,
     "progress_percent_width": 34,
-    "progress_bar_height": 5,
-    "progress_summary_min_height": 34,
-    "progress_summary_max_height": 60,
+    "progress_bar_height": 4,
+    "progress_detail_max_height": 34,
+    "progress_min_height": 90,
+    "progress_max_height": 110,
     "action_margins": (0, 8, 0, 0),
     "action_spacing": 12,
     "action_height": 36,
@@ -502,45 +501,22 @@ class MainWindow(QMainWindow):
         self.progress_layout = QVBoxLayout(section)
         self.progress_layout.setContentsMargins(*self.ui_sizes["progress_margins"])
         self.progress_layout.setSpacing(int(self.ui_sizes["progress_spacing"]))
+        section.setMinimumHeight(int(self.ui_sizes["progress_min_height"]))
+        section.setMaximumHeight(int(self.ui_sizes["progress_max_height"]))
 
-        self.progress_header_layout = QHBoxLayout()
-        self.progress_header_layout.setContentsMargins(0, 0, 0, 0)
-        self.progress_header_layout.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
-
-        title_label = QLabel("Progress")
-        title_label.setObjectName("progressTitle")
-        self.progress_label = QLabel("Idle")
-        self.progress_label.setObjectName("progressStatePill")
+        self.progress_label = QLabel("")
+        self.progress_label.setObjectName("progressStatus")
         self.progress_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.progress_label.setMinimumWidth(int(self.ui_sizes["progress_pill_width"]))
-
-        self.progress_header_layout.addWidget(title_label)
-        self.progress_header_layout.addStretch(1)
-
-        self.progress_status_module = QWidget()
-        self.progress_status_module.setObjectName("progressStatusModule")
-        self.progress_status_module.setAttribute(Qt.WA_StyledBackground, True)
-
-        self.progress_module_layout = QVBoxLayout(self.progress_status_module)
-        self.progress_module_layout.setContentsMargins(*self.ui_sizes["progress_module_margins"])
-        self.progress_module_layout.setSpacing(int(self.ui_sizes["progress_module_spacing"]))
 
         self.progress_status_row = QHBoxLayout()
         self.progress_status_row.setContentsMargins(0, 0, 0, 0)
         self.progress_status_row.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
-
-        self.progress_icon_label = QLabel("i")
-        self.progress_icon_label.setObjectName("progressStatusIcon")
-        self.progress_icon_label.setAlignment(Qt.AlignCenter)
-        progress_icon_size = int(self.ui_sizes["progress_icon_size"])
-        self.progress_icon_label.setFixedSize(QSize(progress_icon_size, progress_icon_size))
 
         self.progress_percent_label = QLabel("0%")
         self.progress_percent_label.setObjectName("progressPercent")
         self.progress_percent_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.progress_percent_label.setMinimumWidth(int(self.ui_sizes["progress_percent_width"]))
 
-        self.progress_status_row.addWidget(self.progress_icon_label)
         self.progress_status_row.addWidget(self.progress_label)
         self.progress_status_row.addStretch(1)
         self.progress_status_row.addWidget(self.progress_percent_label)
@@ -553,36 +529,17 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFixedHeight(int(self.ui_sizes["progress_bar_height"]))
         self.progress_bar.valueChanged.connect(self._refresh_progress_percent)
 
-        self.progress_summary_area = QScrollArea()
-        self.progress_summary_area.setObjectName("progressSummaryArea")
-        self.progress_summary_area.setWidgetResizable(True)
-        self.progress_summary_area.setFrameShape(QFrame.NoFrame)
-        self.progress_summary_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.progress_summary_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.progress_summary_area.setMinimumHeight(int(self.ui_sizes["progress_summary_min_height"]))
-        self.progress_summary_area.setMaximumHeight(int(self.ui_sizes["progress_summary_max_height"]))
-
-        summary_body = QWidget()
-        summary_body.setObjectName("progressSummaryBody")
-        self.summary_layout = QVBoxLayout(summary_body)
-        self.summary_layout.setContentsMargins(0, 2, 0, 0)
-        self.summary_layout.setSpacing(0)
-
-        self.summary_label = QLabel("Scan the current set to begin.")
-        self.summary_label.setObjectName("progressSummary")
+        self.summary_label = QLabel("")
+        self.summary_label.setObjectName("progressDetail")
         self.summary_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.summary_label.setWordWrap(True)
         self.summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.summary_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
-        self.summary_layout.addWidget(self.summary_label)
-        self.progress_summary_area.setWidget(summary_body)
+        self.summary_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.summary_label.setMaximumHeight(int(self.ui_sizes["progress_detail_max_height"]))
 
-        self.progress_module_layout.addLayout(self.progress_status_row)
-        self.progress_module_layout.addWidget(self.progress_bar)
-        self.progress_module_layout.addWidget(self.progress_summary_area)
-
-        self.progress_layout.addLayout(self.progress_header_layout)
-        self.progress_layout.addWidget(self.progress_status_module)
+        self.progress_layout.addLayout(self.progress_status_row)
+        self.progress_layout.addWidget(self.progress_bar)
+        self.progress_layout.addWidget(self.summary_label)
         self._set_progress_state("idle")
         return section
 
@@ -731,18 +688,12 @@ class MainWindow(QMainWindow):
 
         self.progress_layout.setContentsMargins(*self.ui_sizes["progress_margins"])
         self.progress_layout.setSpacing(int(self.ui_sizes["progress_spacing"]))
-        self.progress_header_layout.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
-        self.progress_module_layout.setContentsMargins(*self.ui_sizes["progress_module_margins"])
-        self.progress_module_layout.setSpacing(int(self.ui_sizes["progress_module_spacing"]))
         self.progress_status_row.setSpacing(int(self.ui_sizes["progress_header_spacing"]))
-        self.progress_label.setMinimumWidth(int(self.ui_sizes["progress_pill_width"]))
-        progress_icon_size = int(self.ui_sizes["progress_icon_size"])
-        self.progress_icon_label.setFixedSize(QSize(progress_icon_size, progress_icon_size))
+        self.progress_card.setMinimumHeight(int(self.ui_sizes["progress_min_height"]))
+        self.progress_card.setMaximumHeight(int(self.ui_sizes["progress_max_height"]))
         self.progress_percent_label.setMinimumWidth(int(self.ui_sizes["progress_percent_width"]))
         self.progress_bar.setFixedHeight(int(self.ui_sizes["progress_bar_height"]))
-        self.progress_summary_area.setMinimumHeight(int(self.ui_sizes["progress_summary_min_height"]))
-        self.progress_summary_area.setMaximumHeight(int(self.ui_sizes["progress_summary_max_height"]))
-        self.summary_layout.setContentsMargins(0, max(0, round(2 * self.ui_scale)), 0, 0)
+        self.summary_label.setMaximumHeight(int(self.ui_sizes["progress_detail_max_height"]))
 
         self.action_layout.setContentsMargins(*self.ui_sizes["action_margins"])
         self.action_layout.setSpacing(int(self.ui_sizes["action_spacing"]))
@@ -807,8 +758,8 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self._set_progress_state("scanning")
-        self.progress_label.setText("Scanning Ableton set...")
-        self.summary_label.setText("Looking up current song, BPM, project path, and stem tracks.")
+        self.progress_label.setText("Scanning Ableton set")
+        self._set_progress_detail("Looking up song, tempo, project, and stem tracks")
 
         self.scan_thread = QThread(self)
         self.scan_worker = ScanWorker(self.state)
@@ -832,9 +783,9 @@ class MainWindow(QMainWindow):
         count = len(state.detected_tracks)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)
-        self._set_progress_state("idle")
         self.progress_label.setText("Scan complete")
-        self.summary_label.setText(f"Detected {count} stem{'s' if count != 1 else ''}.")
+        self._set_progress_detail(f"Detected {count} stem{'s' if count != 1 else ''}")
+        self._set_progress_state("idle")
         self._set_export_enabled(count > 0)
         self.open_button.setEnabled(self.current_job is not None or self.project is not None)
 
@@ -843,7 +794,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self._set_progress_state("scan-failed")
         self.progress_label.setText("Scan failed")
-        self.summary_label.setText(message)
+        self._set_progress_detail(message)
         if not self._startup_scan:
             QMessageBox.warning(self, "Scan failed", message)
         self._startup_scan = False
@@ -949,23 +900,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No stems selected", "Select at least one stem to export.")
             return
 
-        preview_names = ", ".join(track.name for track in self.current_job.selected_tracks)
-        confirm = QMessageBox(self)
-        confirm.setWindowTitle("Confirm Export")
-        confirm.setText("These are the stems to export")
-        confirm.setInformativeText(
-            f"Count: {len(self.current_job.selected_tracks)}\n"
-            f"Destination: {self.current_job.stems_dir}\n"
-            f"Mode: {self.current_job.replace_mode}\n"
-            f"Tracks: {preview_names}"
-        )
-        cancel_button = confirm.addButton("Cancel", QMessageBox.RejectRole)
-        boom_button = confirm.addButton("Boom", QMessageBox.AcceptRole)
-        confirm.setDefaultButton(boom_button)
-        confirm.exec()
-        if confirm.clickedButton() is cancel_button:
-            return
-        self.start_export()
+        confirm = ExportConfirmationDialog(self.current_job, self, scale=self.ui_scale)
+        if confirm.exec() == QDialog.Accepted:
+            self.start_export()
 
     def start_export(self) -> None:
         if self.current_job is None or self.export_thread is not None:
@@ -975,8 +912,8 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, len(self.current_job.selected_tracks) or 1)
         self.progress_bar.setValue(0)
         self._set_progress_state("export-starting")
-        self.progress_label.setText("Starting export...")
-        self.summary_label.setText("Preparing per-stem export.")
+        self.progress_label.setText("Preparing export")
+        self._set_export_progress_detail(completed=0)
         self.scan_button.setEnabled(False)
         self._set_export_enabled(False)
         self.cancel_button.setEnabled(True)
@@ -995,15 +932,17 @@ class MainWindow(QMainWindow):
     def _handle_export_progress(self, event: str, message: str) -> None:
         if event == "preflight":
             self._set_progress_state("export-starting")
+            self.progress_label.setText("Preparing export")
         elif event == "cancelled":
             self._set_progress_state("cancelled")
+            self.progress_label.setText("Export cancelled")
         else:
             self._set_progress_state("export-in-progress")
-        self.progress_label.setText(message)
         if event == "stem":
-            parts = message.split(" ", 1)[0]
+            parts, _, track_name = message.partition(" ")
             current_index = int(parts.split("/")[0])
             self.progress_bar.setValue(current_index - 1)
+            self.progress_label.setText(f"Exporting {track_name}")
         elif event in {"success", "skipped", "failed"}:
             self.progress_bar.setValue(min(self.progress_bar.value() + 1, self.progress_bar.maximum()))
             if event == "success":
@@ -1015,8 +954,7 @@ class MainWindow(QMainWindow):
             label = self.status_by_track_name.get(track_name)
             if label is not None:
                 self._set_track_status(label, event)
-        elif event == "cancelled":
-            self.summary_label.setText("Export cancelled before the next stem.")
+        self._set_export_progress_detail()
 
     def _set_track_status(self, label: QLabel, status: str) -> None:
         label.setText(status.title())
@@ -1027,31 +965,34 @@ class MainWindow(QMainWindow):
     def _set_progress_state(self, status: str) -> None:
         for widget in (
             self.progress_card,
-            self.progress_status_module,
-            self.progress_icon_label,
             self.progress_label,
             self.progress_percent_label,
             self.progress_bar,
-            self.progress_summary_area,
             self.summary_label,
         ):
             widget.setProperty("progressState", status)
             widget.style().unpolish(widget)
             widget.style().polish(widget)
             widget.update()
-        self.progress_icon_label.setText(self._progress_icon_for_state(status))
+        show_meter = status in {"export-starting", "export-in-progress", "cancelling", "cancelled"}
+        self.progress_card.setVisible(status != "idle")
+        self.progress_bar.setVisible(show_meter)
+        self.progress_percent_label.setVisible(show_meter)
         self._refresh_progress_percent()
 
-    def _progress_icon_for_state(self, status: str) -> str:
-        if status in {"scan-failed", "export-failed"}:
-            return "!"
-        if status in {"export-complete"}:
-            return "OK"
-        if status in {"scanning", "export-starting", "export-in-progress"}:
-            return ">"
-        if status in {"cancelling", "cancelled"}:
-            return "-"
-        return "i"
+    def _set_progress_detail(self, text: str) -> None:
+        self.summary_label.setText(text)
+        self.summary_label.setToolTip(text)
+
+    def _set_export_progress_detail(self, *, completed: int | None = None) -> None:
+        if self.current_job is None:
+            return
+        total = len(self.current_job.selected_tracks)
+        completed_count = self.progress_bar.value() if completed is None else completed
+        stem_word = "stem" if total == 1 else "stems"
+        self._set_progress_detail(
+            f"{completed_count} of {total} {stem_word} · Saving to {self.current_job.stems_dir}"
+        )
 
     def _refresh_progress_percent(self, *_args) -> None:
         maximum = self.progress_bar.maximum()
@@ -1080,7 +1021,7 @@ class MainWindow(QMainWindow):
             self.progress_bar.setValue(self.progress_bar.maximum())
             self._set_progress_state("export-complete")
             self.progress_label.setText("Export complete")
-        self.summary_label.setText(summary)
+        self._set_progress_detail(summary)
         self.open_button.setEnabled(True)
         full_summary = build_export_summary(result)
         self.preferences = append_recent_export(
@@ -1102,7 +1043,7 @@ class MainWindow(QMainWindow):
     def _handle_export_failed(self, message: str) -> None:
         self._set_progress_state("export-failed")
         self.progress_label.setText("Export failed")
-        self.summary_label.setText(message)
+        self._set_progress_detail(message)
         QMessageBox.warning(self, "Export failed", message)
 
     def _cleanup_export_thread(self, *_args) -> None:
@@ -1133,8 +1074,8 @@ class MainWindow(QMainWindow):
         self.export_cancel_requested = True
         self.export_worker.cancel()
         self._set_progress_state("cancelling")
-        self.progress_label.setText("Cancelling after current stem...")
-        self.summary_label.setText("Safe cancel requested.")
+        self.progress_label.setText("Cancelling after current stem")
+        self._set_export_progress_detail()
 
     def open_export_folder(self) -> None:
         if self.current_job is not None:

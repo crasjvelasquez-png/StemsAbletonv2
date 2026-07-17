@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from ..export import ExportAutomation, execute_export_job
 from ..models import ExportJob
-from ..project import rename_old_stems_folders
 from ..state import AppState
 
 try:
@@ -44,7 +43,6 @@ class ExportWorker(QObject):
 
     def run(self) -> None:
         try:
-            rename_old_stems_folders(self.job.project_folder, self.job.stems_dir.name)
             result = execute_export_job(
                 self.job,
                 self.state.ableton_client,

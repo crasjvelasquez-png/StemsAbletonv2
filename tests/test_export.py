@@ -43,17 +43,54 @@ class FakeExportAutomation:
 
 
 def test_execute_export_job_exports_selected_tracks(tmp_path):
+    stems_dir = tmp_path / "Stems"
     job = ExportJob(
         song_name="Song",
         project_folder=tmp_path,
-        stems_dir=tmp_path,
+        stems_dir=stems_dir,
         tracks=[StemTrack(index=0, name="DRUMS"), StemTrack(index=1, name="BASS")],
         replace_mode="replace",
     )
     result = execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
     assert result.success_count == 2
-    assert (tmp_path / "Song_DRUMS -   BPM.wav").exists()
-    assert (tmp_path / "Song_BASS -   BPM.wav").exists()
+    assert (stems_dir / "Song_DRUMS -   BPM.wav").exists()
+    assert (stems_dir / "Song_BASS -   BPM.wav").exists()
+
+
+def test_execute_export_job_migrates_legacy_folder_for_project_local_destination(tmp_path):
+    legacy = tmp_path / "Stems"
+    legacy.mkdir()
+    destination = tmp_path / "Song - July 16 2026 - Stems - 120 BPM"
+    job = ExportJob(
+        song_name="Song",
+        project_folder=tmp_path,
+        stems_dir=destination,
+        tracks=[StemTrack(index=0, name="DRUMS")],
+    )
+
+    execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
+
+    assert destination.is_dir()
+    assert not legacy.exists()
+
+
+def test_execute_export_job_does_not_migrate_project_folders_for_external_destination(tmp_path):
+    project_folder = tmp_path / "Project"
+    project_folder.mkdir()
+    legacy = project_folder / "Stems"
+    legacy.mkdir()
+    destination = tmp_path / "Exports" / "Song - July 16 2026 - Stems - 120 BPM"
+    job = ExportJob(
+        song_name="Song",
+        project_folder=project_folder,
+        stems_dir=destination,
+        tracks=[StemTrack(index=0, name="DRUMS")],
+    )
+
+    execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
+
+    assert destination.is_dir()
+    assert legacy.is_dir()
 
 
 def test_verify_exported_file_rejects_empty_files(tmp_path):
