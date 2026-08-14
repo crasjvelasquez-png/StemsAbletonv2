@@ -7,6 +7,8 @@
     </filter>
   </defs>
 
+  <!-- Keep the artwork inside the standard macOS app-icon footprint. -->
+  <g transform="translate(72 72) scale(0.859375)">
   <rect width="1024" height="1024" rx="236" fill="#0b0d12"/>
   <rect x="74" y="74" width="876" height="876" rx="196" fill="#10151d"/>
 
@@ -18,4 +20,5 @@
   </g>
 
   <rect x="74" y="74" width="876" height="876" rx="196" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4"/>
+  </g>
 </svg>

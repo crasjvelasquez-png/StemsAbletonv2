@@ -14,6 +14,8 @@ def test_preferences_store_round_trip(tmp_path):
     prefs = Preferences(
         replace_mode="keep",
         export_destination_root="/tmp/Exports",
+        panel_width=620,
+        panel_height=760,
         stem_name_format="{song}_{track} - {key}.wav",
         folder_name_format="{song} - {date} - Stems",
     )
@@ -30,6 +32,8 @@ def test_preferences_store_round_trip(tmp_path):
     loaded = store.load()
     assert loaded.replace_mode == "keep"
     assert loaded.export_destination_root == "/tmp/Exports"
+    assert loaded.panel_width == 620
+    assert loaded.panel_height == 760
     assert loaded.stem_name_format == "{song}_{track} - {key}.wav"
     assert loaded.folder_name_format == "{song} - {date} - Stems"
     assert loaded.recent_exports[0].song_name == "Song"

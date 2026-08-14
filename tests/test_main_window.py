@@ -6,8 +6,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QDialogButtonBox, QInputDialog, QMessageBox, QTabWidget, QWidget
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTabWidget, QWidget
 
 from stems.models import ExportItemResult, ExportJob, ExportResult, ProjectContext, StemTrack
 from stems.naming import stems_folder_name
@@ -90,12 +90,18 @@ def window(app, monkeypatch):
     panel.close()
 
 
-def test_current_set_card_uses_stronger_info_blocks(window):
+def test_current_set_summary_uses_studio_information_hierarchy(window):
+    assert window.app_title.text() == "Stems"
     assert window.song_value.objectName() == "currentSetValue"
-    assert window.bpm_value.objectName() == "currentSetValue"
+    assert window.bpm_value.objectName() == "currentSetBpm"
     assert window.path_value.objectName() == "currentSetPathValue"
-    assert window.song_value.wordWrap() is True
-    assert window.path_value.wordWrap() is True
+    assert window.path_value.toolTip() == "-"
+
+
+def test_default_window_size_keeps_detected_stem_controls_visible(window):
+    assert window.size() == QSize(*main_window_module.REFERENCE_WINDOW_SIZE)
+    assert window.size() == QSize(620, 760)
+    assert window.minimumSize() == QSize(480, 560)
 
 
 def test_progress_card_is_compact_and_hidden_while_idle(window):
@@ -120,14 +126,14 @@ def test_progress_card_is_compact_and_hidden_while_idle(window):
 
 
 def test_main_content_scrolls_without_overlapping_export_and_progress(window, app):
-    window.resize(700, 860)
+    window.resize(620, 760)
     window.show()
     app.processEvents()
 
     root_layout = window.centralWidget().layout()
     scroll_area = root_layout.itemAt(0).widget()
     action_layout = root_layout.itemAt(root_layout.count() - 1).layout()
-    export_card = window.key_input.parentWidget().parentWidget()
+    export_card = window.export_section
     window._set_progress_state("scanning")
     window.progress_label.setText("Scanning Ableton set")
     window._set_progress_detail("Looking up song, tempo, project, and stem tracks")
@@ -153,12 +159,14 @@ def test_scanning_shows_status_without_meter(window):
 def test_bottom_action_row_matches_button_hierarchy(window):
     window_layout = window.centralWidget().layout()
     action_layout = window_layout.itemAt(window_layout.count() - 1).layout()
-    buttons = [action_layout.itemAt(index).widget() for index in range(action_layout.count())]
+    buttons = [
+        action_layout.itemAt(index).widget()
+        for index in range(action_layout.count())
+        if not action_layout.itemAt(index).widget().isHidden()
+    ]
 
     assert [button.text() for button in buttons] == [
         "Scan Current Set",
-        "Open Folder",
-        "Cancel",
         "Export Stems",
     ]
     assert window.scan_button.objectName() == "primaryAction"
@@ -166,6 +174,8 @@ def test_bottom_action_row_matches_button_hierarchy(window):
     assert window.cancel_button.objectName() == "secondary"
     assert window.export_button.objectName() == "secondary"
     assert window.export_button.isEnabled() is False
+    assert window.open_button.isHidden() is True
+    assert window.cancel_button.isHidden() is True
     assert action_layout.spacing() == 12
     assert all(button.property("actionBarButton") is True for button in buttons)
     assert {button.minimumHeight() for button in buttons} == {36}
@@ -178,7 +188,7 @@ def test_bottom_action_row_matches_button_hierarchy(window):
 
 
 def test_export_controls_remain_readable_and_separated_when_compact(window, app):
-    window.resize(360, 520)
+    window.resize(480, 560)
     window.show()
     window._set_progress_state("scanning")
     window.progress_label.setText("Scanning Ableton set")
@@ -187,17 +197,114 @@ def test_export_controls_remain_readable_and_separated_when_compact(window, app)
 
     controls = (window.project_name_input, window.key_input, window.replace_mode)
     assert all(control.height() >= 34 for control in controls)
-    assert window.key_input.geometry().top() > window.project_name_input.geometry().bottom()
-    assert window.replace_mode.geometry().top() > window.key_input.geometry().bottom()
+    assert window.export_options_layout.itemAtPosition(1, 0).widget() is window.project_name_input
+    assert window.export_options_layout.itemAtPosition(3, 0).widget() is window.key_input
+    assert window.export_options_layout.itemAtPosition(5, 0).widget() is window.replace_mode
     assert window.preferences_button.width() >= 28
     assert window.scan_button.height() >= 32
-    for button in window.action_buttons:
+    for button in (window.scan_button, window.export_button):
         text_width = button.fontMetrics().horizontalAdvance(button.text())
         assert button.width() >= text_width + 12
-    assert window.action_layout.itemAtPosition(1, 0).widget() is window.cancel_button
-    assert window.action_layout.itemAtPosition(1, 1).widget() is window.export_button
-    export_card = window.key_input.parentWidget().parentWidget()
+    assert window.action_layout.itemAtPosition(0, 0).widget() is window.scan_button
+    assert window.action_layout.itemAtPosition(0, 1).widget() is window.export_button
+    export_card = window.export_section
     assert export_card.geometry().bottom() < window.progress_card.geometry().top()
+
+
+def test_resize_reflows_without_scaling_controls(window, app):
+    window.show()
+    app.processEvents()
+    metrics_before = {
+        "font": window.project_name_input.fontMetrics().height(),
+        "field": window.project_name_input.height(),
+        "button": window.scan_button.height(),
+    }
+
+    window.resize(480, 560)
+    app.processEvents()
+
+    assert window.ui_scale == 1.0
+    assert window.project_name_input.fontMetrics().height() == metrics_before["font"]
+    assert window.project_name_input.height() == metrics_before["field"]
+    assert window.scan_button.height() == metrics_before["button"]
+    assert window.export_options_layout.itemAtPosition(3, 0).widget() is window.key_input
+
+    window.resize(900, 700)
+    app.processEvents()
+
+    assert window.export_options_layout.itemAtPosition(1, 0).widget() is window.project_name_input
+    assert window.export_options_layout.itemAtPosition(1, 1).widget() is window.key_input
+
+
+def test_stem_list_uses_outer_scroll_and_keeps_checkboxes_visible(window, app):
+    tracks = [
+        StemTrack(index=index, name=f"VERY LONG CHANNEL NAME {index:02d}")
+        for index in range(16)
+    ]
+    window.state.detected_tracks = tracks
+    window._populate_tracks(tracks)
+    window.resize(480, 560)
+    window.show()
+    app.processEvents()
+
+    outer_scroll = window.centralWidget().layout().itemAt(0).widget().verticalScrollBar()
+    assert window.track_list.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert window.track_list.verticalScrollBar().maximum() == 0
+    assert outer_scroll.maximum() > 0
+    assert window.selection_count_label.text() == "16 selected"
+
+    first_row = window.track_list.itemWidget(window.track_list.item(0))
+    assert first_row.checkbox.size() == QSize(28, 28)
+    assert first_row.checkbox.geometry().left() >= 0
+    assert first_row.checkbox.geometry().right() < first_row.width()
+    assert first_row.status_label.isHidden() is True
+
+    window._set_track_status(first_row.status_label, "exporting")
+    app.processEvents()
+    assert first_row.status_label.text() == "Exporting"
+    assert first_row.status_label.geometry().right() < first_row.width()
+
+
+def test_selected_count_updates_and_context_actions_only_show_when_useful(window, app):
+    track = StemTrack(index=0, name="DRUMS")
+    window.state.detected_tracks = [track]
+    window._populate_tracks([track])
+    row = window.track_list.itemWidget(window.track_list.item(0))
+
+    row.checkbox.setChecked(False)
+    assert window.selection_count_label.text() == "0 selected"
+
+    assert window.open_button.isHidden() is True
+    assert window.cancel_button.isHidden() is True
+    window._set_open_available(True)
+    window._set_cancel_available(True)
+    app.processEvents()
+    assert window.open_button.isHidden() is False
+    assert window.cancel_button.isHidden() is False
+
+
+def test_saved_window_size_restores_clamps_and_persists(window):
+    window.preferences.panel_width = 535
+    window.preferences.panel_height = 605
+    window._apply_preferences_to_ui()
+    assert window.size() == QSize(535, 605)
+
+    window.preferences.panel_width = -1
+    window.preferences.panel_height = 0
+    window._apply_preferences_to_ui()
+    assert window.size() == QSize(*main_window_module.REFERENCE_WINDOW_SIZE)
+
+    window.preferences.panel_width = 100_000
+    window.preferences.panel_height = 100_000
+    window._apply_preferences_to_ui()
+    available = window.screen().availableGeometry()
+    assert window.width() == available.width()
+    assert window.height() == available.height()
+
+    window.resize(600, 700)
+    window.close()
+    assert window.preferences.panel_width == 600
+    assert window.preferences.panel_height == 700
 
 
 def test_preferences_tabs_render_as_dark_product_surfaces(window, app):
@@ -212,6 +319,48 @@ def test_preferences_tabs_render_as_dark_product_surfaces(window, app):
     assert center.lightness() < 96
 
     dialog.close()
+
+
+def test_preferences_general_tab_is_compact_and_saves_immediately(window, app):
+    dialog = PreferencesDialog(Preferences(), window)
+    saved = []
+    dialog.preferences_changed.connect(saved.append)
+    dialog.show()
+    app.processEvents()
+
+    assert dialog.size() == QSize(560, 500)
+    assert dialog.close_button.text() == "Done"
+    assert dialog.saved_label.text() == "Saved"
+    assert dialog.findChild(QWidget, "preferencesGroup") is not None
+
+    dialog.auto_open_folder.setChecked(False)
+    app.processEvents()
+
+    assert saved[-1].auto_open_folder is False
+    assert dialog.saved_label.property("saveState") == "saved"
+    dialog.close()
+
+
+def test_preferences_tab_size_tracks_content(window, app):
+    dialog = PreferencesDialog(Preferences(), window)
+    dialog.tabs.setCurrentIndex(1)
+    app.processEvents()
+
+    assert dialog.size() == QSize(560, 680)
+
+
+def test_preferences_reset_restores_defaults(window, app, monkeypatch):
+    dialog = PreferencesDialog(Preferences(auto_open_folder=False, menubar_mode=True), window)
+    saved = []
+    dialog.preferences_changed.connect(saved.append)
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args, **_kwargs: QMessageBox.Reset)
+
+    dialog.reset_button.click()
+    app.processEvents()
+
+    assert saved[-1].auto_open_folder is True
+    assert saved[-1].menubar_mode is False
+    assert dialog.saved_label.text() == "Saved"
 
 
 def test_naming_preferences_use_separate_presets_and_target_specific_tokens(window, app):
@@ -240,10 +389,10 @@ def test_naming_token_inserts_at_cursor_and_invalid_format_disables_ok(window, a
     app.processEvents()
 
     assert dialog.stem_name_format.text() == "{track}.wav"
-    assert dialog.ok_button.isEnabled() is False  # Built-in edits must be saved as a custom preset.
+    assert dialog.saved_label.property("saveState") == "pending"
     dialog.stem_name_format.setText("{song}.wav")
     assert "unique name" in dialog.stem_editor.error_label.text()
-    assert dialog.ok_button.isEnabled() is False
+    assert dialog.saved_label.property("saveState") == "pending"
 
 
 def test_custom_naming_presets_can_be_created_and_defaulted(window, app, monkeypatch):
@@ -284,8 +433,8 @@ def test_scan_success_updates_current_set_values(window, monkeypatch):
     window._handle_scan_success(state, project)
 
     assert window.song_value.text() == "Neon Tide"
-    assert window.bpm_value.text() == "128"
-    assert window.path_value.text() == str(project.project_folder)
+    assert window.bpm_value.text() == "128 BPM"
+    assert window.path_value.toolTip() == str(project.project_folder)
     assert window.progress_label.text() == "Scan complete"
     assert window.progress_card.property("progressState") == "idle"
     assert window.progress_card.isHidden() is True

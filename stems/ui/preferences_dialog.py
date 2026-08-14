@@ -9,8 +9,6 @@ try:
         QCheckBox,
         QComboBox,
         QDialog,
-        QDialogButtonBox,
-        QFormLayout,
         QFrame,
         QHBoxLayout,
         QInputDialog,
@@ -346,6 +344,7 @@ class NamingPresetEditor(QFrame):
         if self._dirty and preset is not None and preset.preset_id not in self.builtin_ids:
             preset.format_string = self.format_input.text().strip()
             self._dirty = False
+            self._update_state()
         custom = [deepcopy(item) for item in self.presets if item.preset_id not in self.builtin_ids]
         if self.kind == "stem":
             preferences.stem_name_presets = custom
@@ -354,53 +353,84 @@ class NamingPresetEditor(QFrame):
             preferences.folder_name_presets = custom
             preferences.default_folder_name_preset_id = self.default_preset_id
 
+    def reset_to_defaults(self, presets: list[NamingPreset], default_preset_id: str) -> None:
+        self.presets = deepcopy(presets)
+        self.default_preset_id = default_preset_id
+        self.builtin_ids = {preset.preset_id for preset in self.presets if preset.preset_id.startswith("builtin-")}
+        self._dirty = False
+        self._refresh_combo(default_preset_id)
+
 
 class PreferencesDialog(QDialog):
+    preferences_changed = Signal(object)
+    open_export_folder_requested = Signal()
+
     def __init__(self, preferences: Preferences, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferences")
-        self.setMinimumSize(680, 720)
+        self.setModal(True)
+        self.setSizeGripEnabled(False)
         self.setStyleSheet(stylesheet_for_scale(1.0))
         self.preferences = normalize_naming_preferences(deepcopy(preferences))
+        self._ready_to_save = False
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 14)
-        layout.setSpacing(14)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
 
-        tabs = QTabWidget(self)
-        tabs.setObjectName("preferencesTabs")
+        self.tabs = QTabWidget(self)
+        self.tabs.setObjectName("preferencesTabs")
 
         general = QWidget()
         general.setObjectName("preferencesGeneral")
         gen_layout = QVBoxLayout(general)
-        form = QFormLayout()
-        form.setHorizontalSpacing(14)
-        form.setVerticalSpacing(9)
+        gen_layout.setContentsMargins(10, 14, 10, 10)
+        gen_layout.setSpacing(14)
 
         self.replace_mode = QComboBox()
+        self.replace_mode.setObjectName("preferencesReplaceMode")
         self.replace_mode.addItem("Replace existing files", "replace")
         self.replace_mode.addItem("Skip existing files", "keep")
         self.replace_mode.setCurrentIndex(0 if self.preferences.replace_mode == "replace" else 1)
         self.auto_open_folder = QCheckBox()
+        self.auto_open_folder.setObjectName("preferencesToggle")
         self.auto_open_folder.setChecked(self.preferences.auto_open_folder)
         self.menubar_mode = QCheckBox()
+        self.menubar_mode.setObjectName("preferencesToggle")
         self.menubar_mode.setChecked(self.preferences.menubar_mode)
         self.launch_at_login = QCheckBox()
+        self.launch_at_login.setObjectName("preferencesToggle")
         self.launch_at_login.setChecked(self.preferences.launch_at_login)
         self.copy_summary = QCheckBox()
+        self.copy_summary.setObjectName("preferencesToggle")
         self.copy_summary.setChecked(self.preferences.copy_summary_to_clipboard)
         self.sticky_position = QCheckBox()
+        self.sticky_position.setObjectName("preferencesToggle")
         self.sticky_position.setChecked(self.preferences.sticky_panel_position)
 
-        form.addRow("Default replace mode", self.replace_mode)
-        form.addRow("Auto-open folder", self.auto_open_folder)
-        form.addRow("Menubar mode", self.menubar_mode)
-        form.addRow("Launch at login", self.launch_at_login)
-        form.addRow("Copy summary to clipboard", self.copy_summary)
-        form.addRow("Sticky panel position", self.sticky_position)
-        gen_layout.addLayout(form)
+        export_group, export_layout = self._preferences_group("EXPORT")
+        export_layout.addWidget(self._setting_row("Existing files", self.replace_mode))
+        export_layout.addWidget(self._separator())
+        export_layout.addWidget(self._setting_row("Open folder after export", self.auto_open_folder))
+        export_layout.addWidget(self._separator())
+        self.open_folder_button = QPushButton("Open Exports Folder")
+        self.open_folder_button.setObjectName("preferencesUtilityAction")
+        self.open_folder_button.setAccessibleName("Open exports folder")
+        self.open_folder_button.clicked.connect(self.open_export_folder_requested.emit)
+        export_layout.addWidget(self._setting_row("Export location", self.open_folder_button))
+        gen_layout.addWidget(export_group)
+
+        app_group, app_layout = self._preferences_group("APP")
+        app_layout.addWidget(self._setting_row("Menubar mode", self.menubar_mode))
+        app_layout.addWidget(self._separator())
+        app_layout.addWidget(self._setting_row("Launch at login", self.launch_at_login))
+        app_layout.addWidget(self._separator())
+        app_layout.addWidget(self._setting_row("Copy export summary", self.copy_summary))
+        app_layout.addWidget(self._separator())
+        app_layout.addWidget(self._setting_row("Remember window position", self.sticky_position))
+        gen_layout.addWidget(app_group)
         gen_layout.addStretch(1)
-        tabs.addTab(general, "General")
+        self.tabs.addTab(general, "General")
 
         naming = QWidget()
         naming.setObjectName("preferencesNaming")
@@ -437,18 +467,128 @@ class PreferencesDialog(QDialog):
         self.preview_label.setAccessibleName("Naming preview")
         nam_layout.addWidget(self.preview_label)
         nam_layout.addStretch(1)
-        tabs.addTab(naming, "Naming")
+        self.tabs.addTab(naming, "Naming")
 
-        layout.addWidget(tabs)
+        layout.addWidget(self.tabs)
 
-        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.ok_button = self.buttons.button(QDialogButtonBox.Ok)
-        self.ok_button.setObjectName("primaryAction")
-        self.buttons.button(QDialogButtonBox.Cancel).setObjectName("secondary")
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
+        footer = QHBoxLayout()
+        footer.setSpacing(10)
+        self.reset_button = QPushButton("Reset to Defaults")
+        self.reset_button.setObjectName("preferencesResetAction")
+        self.reset_button.clicked.connect(self._reset_to_defaults)
+        self.saved_label = QLabel("Saved")
+        self.saved_label.setObjectName("preferencesSaveStatus")
+        self.saved_label.setProperty("saveState", "saved")
+        self.close_button = QPushButton("Done")
+        self.close_button.setObjectName("primaryAction")
+        self.close_button.clicked.connect(self.accept)
+        footer.addWidget(self.reset_button)
+        footer.addStretch(1)
+        footer.addWidget(self.saved_label)
+        footer.addWidget(self.close_button)
+        layout.addLayout(footer)
 
+        self._update_preview()
+        self._connect_live_saving()
+        self.tabs.currentChanged.connect(self._resize_to_current_tab)
+        self._ready_to_save = True
+        self._resize_to_current_tab()
+
+    @staticmethod
+    def _separator() -> QFrame:
+        separator = QFrame()
+        separator.setObjectName("preferencesSeparator")
+        separator.setFrameShape(QFrame.HLine)
+        return separator
+
+    @staticmethod
+    def _preferences_group(title: str) -> tuple[QFrame, QVBoxLayout]:
+        group = QFrame()
+        group.setObjectName("preferencesGroup")
+        group_layout = QVBoxLayout(group)
+        group_layout.setContentsMargins(14, 10, 14, 10)
+        group_layout.setSpacing(0)
+        heading = QLabel(title)
+        heading.setObjectName("preferencesGroupTitle")
+        group_layout.addWidget(heading)
+        return group, group_layout
+
+    @staticmethod
+    def _setting_row(title: str, control: QWidget) -> QWidget:
+        row = QWidget()
+        row.setObjectName("preferencesSettingRow")
+        row.setMinimumHeight(45)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(14)
+        label = QLabel(title)
+        label.setObjectName("preferencesSettingLabel")
+        row_layout.addWidget(label)
+        row_layout.addStretch(1)
+        row_layout.addWidget(control)
+        return row
+
+    def _connect_live_saving(self) -> None:
+        self.replace_mode.currentIndexChanged.connect(self._save_immediately)
+        for checkbox in (
+            self.auto_open_folder,
+            self.menubar_mode,
+            self.launch_at_login,
+            self.copy_summary,
+            self.sticky_position,
+        ):
+            checkbox.toggled.connect(self._save_immediately)
+
+    def _resize_to_current_tab(self, index: int | None = None) -> None:
+        current = self.tabs.currentIndex() if index is None else index
+        self.setFixedSize(560, 500 if current == 0 else 680)
+
+    def _set_save_status(self, text: str, state: str) -> None:
+        self.saved_label.setText(text)
+        self.saved_label.setProperty("saveState", state)
+        self.saved_label.style().unpolish(self.saved_label)
+        self.saved_label.style().polish(self.saved_label)
+
+    def _save_immediately(self) -> None:
+        if not self._ready_to_save:
+            return
+        if not self.stem_editor.can_accept or not self.folder_editor.can_accept:
+            self._set_save_status("Not saved", "pending")
+            return
+        self.preferences = self.to_preferences()
+        self._set_save_status("Saved", "saved")
+        self.preferences_changed.emit(deepcopy(self.preferences))
+
+    def _reset_to_defaults(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Reset preferences?",
+            "Reset settings and naming presets to their defaults?",
+            QMessageBox.Reset | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if answer != QMessageBox.Reset:
+            return
+
+        recent_exports = deepcopy(self.preferences.recent_exports)
+        defaults = Preferences(recent_exports=recent_exports)
+        self._ready_to_save = False
+        self.preferences = normalize_naming_preferences(defaults)
+        self.replace_mode.setCurrentIndex(0)
+        self.auto_open_folder.setChecked(defaults.auto_open_folder)
+        self.menubar_mode.setChecked(defaults.menubar_mode)
+        self.launch_at_login.setChecked(defaults.launch_at_login)
+        self.copy_summary.setChecked(defaults.copy_summary_to_clipboard)
+        self.sticky_position.setChecked(defaults.sticky_panel_position)
+        self.stem_editor.reset_to_defaults(
+            list(BUILTIN_STEM_NAMING_PRESETS),
+            defaults.default_stem_name_preset_id,
+        )
+        self.folder_editor.reset_to_defaults(
+            list(BUILTIN_FOLDER_NAMING_PRESETS),
+            defaults.default_folder_name_preset_id,
+        )
+        self._ready_to_save = True
         self._update_preview()
 
     def _update_preview(self) -> None:
@@ -469,7 +609,8 @@ class PreferencesDialog(QDialog):
             date="May 05 2026",
         )
         self.preview_label.setText(f"Stem file   {stem_out}\nFolder      {folder_out}")
-        self.ok_button.setEnabled(self.stem_editor.can_accept and self.folder_editor.can_accept)
+        if self._ready_to_save:
+            self._save_immediately()
 
     def to_preferences(self) -> Preferences:
         updated = deepcopy(self.preferences)

@@ -3,30 +3,30 @@ from __future__ import annotations
 import re
 
 DESIGN_TOKENS = {
-    "background": "#181b22",
-    "panel": "#20242e",
-    "panel_soft": "#252a35",
-    "panel_hover": "#2b313d",
-    "field": "#171a21",
-    "field_hover": "#1c2029",
-    "border": "#343a47",
-    "border_strong": "#4a5363",
-    "separator": "#303642",
-    "text": "#e4e9ef",
-    "text_strong": "#f2f5f8",
-    "text_muted": "#aab3c0",
-    "text_faint": "#707a89",
-    "accent": "#7cc4f0",
-    "accent_hover": "#8dd0f5",
-    "accent_pressed": "#6ab8e8",
-    "success": "#72e39d",
+    "background": "#15171b",
+    "panel": "#1d2026",
+    "panel_soft": "#242930",
+    "panel_hover": "#2a3038",
+    "field": "#171a1f",
+    "field_hover": "#1d2127",
+    "border": "#353b45",
+    "border_strong": "#4a525e",
+    "separator": "#30363f",
+    "text": "#dfe3e8",
+    "text_strong": "#f2f4f7",
+    "text_muted": "#aab2be",
+    "text_faint": "#737c89",
+    "accent": "#69c7bc",
+    "accent_hover": "#78d3c7",
+    "accent_pressed": "#58b9ae",
+    "success": "#74c991",
     "warning": "#f5d56e",
     "danger": "#e85d5d",
-    "accent_text": "#071522",
-    "menu": "#20242e",
-    "radius_panel": "10px",
-    "radius_control": "8px",
-    "radius_pill": "11px",
+    "accent_text": "#071614",
+    "menu": "#1d2026",
+    "radius_panel": "8px",
+    "radius_control": "7px",
+    "radius_pill": "10px",
     "font_family": '".AppleSystemUIFont", "SF Pro Text", "Helvetica Neue"',
 }
 
@@ -57,9 +57,17 @@ QWidget#appHeader {{
     background-color: transparent;
 }}
 
+QLabel#appTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-family: "SF Pro Display", ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 18px;
+    font-weight: 600;
+}}
+
 /* Product surfaces */
 QWidget#card,
-QWidget#progressCard {{
+QWidget#progressCard,
+QWidget#currentSetSection {{
     background-color: {DESIGN_TOKENS["panel"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_panel"]};
@@ -67,9 +75,9 @@ QWidget#progressCard {{
 
 /* Section titles inside panels */
 QLabel#cardTitle {{
-    color: {DESIGN_TOKENS["text"]};
+    color: {DESIGN_TOKENS["text_strong"]};
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
 }}
 
 /* General labels */
@@ -80,8 +88,8 @@ QLabel {{
 
 QLabel#muted {{
     color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 13px;
-    font-weight: 400;
+    font-size: 11px;
+    font-weight: 500;
 }}
 
 QLabel#destinationPath {{
@@ -90,22 +98,38 @@ QLabel#destinationPath {{
     font-size: 13px;
 }}
 
-QLabel#currentSetLabel {{
+QLabel#currentSetEyebrow {{
     color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 13px;
-    font-weight: 400;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    font-weight: 500;
 }}
 
 QLabel#currentSetValue {{
     color: {DESIGN_TOKENS["text_strong"]};
-    font-size: 14px;
+    font-family: "SF Pro Display", ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 17px;
+    font-weight: 600;
+}}
+
+QLabel#currentSetBpm {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
     font-weight: 500;
 }}
 
 QLabel#currentSetPathValue {{
-    color: {DESIGN_TOKENS["text"]};
-    font-size: 13px;
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 12px;
     font-weight: 400;
+}}
+
+QLabel#selectionCount {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 500;
 }}
 
 /* Export confirmation */
@@ -428,9 +452,10 @@ QFrame#stemTrackRowSeparator {{
 }}
 
 QLabel#stemRowIndex {{
-    color: rgba(221, 231, 242, 0.72);
-    font-size: 13px;
-    font-weight: 400;
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 500;
 }}
 
 QLabel#stemRowName {{
@@ -442,12 +467,17 @@ QLabel#stemRowName {{
 QLabel#stemRowStatus {{
     border: none;
     border-radius: 0px;
-    font-size: 13px;
-    font-weight: 400;
+    font-size: 12px;
+    font-weight: 500;
     padding: 0px;
 }}
 
 QLabel#stemRowStatus[statusState="detected"] {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    background-color: transparent;
+}}
+
+QLabel#stemRowStatus[statusState="exporting"] {{
     color: {DESIGN_TOKENS["accent"]};
     background-color: transparent;
 }}
@@ -528,25 +558,25 @@ QCheckBox:focus {{
 }}
 
 QCheckBox#stemRowCheckbox {{
-    background-color: rgba(124, 196, 240, 0.10);
-    border: 1px solid rgba(124, 196, 240, 0.74);
+    background-color: rgba(105, 199, 188, 0.11);
+    border: 1px solid rgba(105, 199, 188, 0.78);
     border-radius: 6px;
     color: {DESIGN_TOKENS["accent_hover"]};
     font-size: 13px;
     font-weight: 600;
-    padding-left: 4px;
+    padding-left: 7px;
     padding-top: 0px;
     spacing: 0px;
 }}
 
 QCheckBox#stemRowCheckbox:hover {{
-    background-color: rgba(124, 196, 240, 0.15);
-    border-color: rgba(161, 220, 251, 0.86);
+    background-color: rgba(105, 199, 188, 0.18);
+    border-color: rgba(120, 211, 199, 0.92);
 }}
 
 QCheckBox#stemRowCheckbox:unchecked {{
     background-color: transparent;
-    border-color: rgba(124, 196, 240, 0.46);
+    border-color: rgba(170, 178, 190, 0.42);
     color: transparent;
 }}
 
@@ -557,17 +587,102 @@ QCheckBox#stemRowCheckbox::indicator {{
     background-color: transparent;
 }}
 
+QWidget#destinationControl {{
+    background-color: transparent;
+}}
+
 /* Menus and dialogs */
 QTabWidget::pane {{
     background-color: {DESIGN_TOKENS["panel"]};
-    border: 1px solid {DESIGN_TOKENS["border"]};
-    border-radius: {DESIGN_TOKENS["radius_control"]};
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
     top: -1px;
 }}
 
 QWidget#preferencesGeneral,
 QWidget#preferencesNaming {{
     background-color: transparent;
+}}
+
+QFrame#preferencesGroup {{
+    background-color: {DESIGN_TOKENS["panel_soft"]};
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+}}
+
+QLabel#preferencesGroupTitle {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    padding-bottom: 4px;
+}}
+
+QWidget#preferencesSettingRow {{
+    background-color: transparent;
+}}
+
+QLabel#preferencesSettingLabel {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QFrame#preferencesSeparator {{
+    background-color: {DESIGN_TOKENS["separator"]};
+    border: none;
+    max-height: 1px;
+}}
+
+QComboBox#preferencesReplaceMode {{
+    min-width: 192px;
+    min-height: 24px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}}
+
+QCheckBox#preferencesToggle {{
+    min-width: 40px;
+    min-height: 40px;
+    spacing: 0px;
+}}
+
+QCheckBox#preferencesToggle::indicator {{
+    width: 18px;
+    height: 18px;
+}}
+
+QPushButton#preferencesUtilityAction,
+QPushButton#preferencesResetAction {{
+    min-height: 30px;
+    padding: 4px 12px;
+}}
+
+QPushButton#preferencesUtilityAction {{
+    color: {DESIGN_TOKENS["accent_hover"]};
+}}
+
+QPushButton#preferencesResetAction {{
+    background-color: transparent;
+    color: {DESIGN_TOKENS["text_muted"]};
+    border-color: transparent;
+}}
+
+QPushButton#preferencesResetAction:hover {{
+    background-color: rgba(232, 93, 93, 0.10);
+    color: #ffaaa4;
+    border-color: rgba(232, 93, 93, 0.24);
+}}
+
+QLabel#preferencesSaveStatus {{
+    color: {DESIGN_TOKENS["success"]};
+    font-size: 12px;
+    font-weight: 500;
+    padding: 0 4px;
+}}
+
+QLabel#preferencesSaveStatus[saveState="pending"] {{
+    color: {DESIGN_TOKENS["warning"]};
 }}
 
 QFrame#namingPresetCard {{
@@ -657,10 +772,12 @@ QLabel#preferencesPreview {{
 QTabBar::tab {{
     background-color: {DESIGN_TOKENS["background"]};
     color: {DESIGN_TOKENS["text_muted"]};
-    border: 1px solid {DESIGN_TOKENS["border"]};
+    border: 1px solid rgba(255, 255, 255, 0.07);
     border-bottom: none;
-    padding: 7px 16px;
-    margin-right: 4px;
+    min-width: 94px;
+    min-height: 28px;
+    padding: 5px 12px;
+    margin-right: 2px;
 }}
 
 QTabBar::tab:selected {{
@@ -725,40 +842,7 @@ QScrollBar::sub-line:vertical {{
 """
 
 
-def _compact_stylesheet() -> str:
-    replacements = [
-        ("padding: 7px 10px;", "padding: 5px 8px;"),
-        ("padding: 8px 16px;", "padding: 5px 10px;"),
-        ("padding: 0 16px;", "padding: 0 10px;"),
-        ("padding: 6px 22px;", "padding: 4px 16px;"),
-        ("min-height: 32px;", "min-height: 26px;"),
-        ("min-height: 34px;", "min-height: 28px;"),
-        ("max-height: 34px;", "max-height: 28px;"),
-        ("min-width: 124px;", "min-width: 100px;"),
-        ("width: 28px;", "width: 22px;"),
-        ("margin-right: 9px;", "margin-right: 7px;"),
-        ("border-radius: 6px;", "border-radius: 5px;"),
-        ("border-radius: 7px;", "border-radius: 6px;"),
-        ("border-radius: 8px;", "border-radius: 6px;"),
-        ("border-radius: 9px;", "border-radius: 7px;"),
-        ("border-radius: 10px;", "border-radius: 8px;"),
-        ("border-radius: 11px;", "border-radius: 9px;"),
-        ("border-radius: 13px;", "border-radius: 10px;"),
-        ("width: 17px;", "width: 14px;"),
-        ("height: 17px;", "height: 14px;"),
-        ("padding-left: 4px;", "padding-left: 3px;"),
-        ("padding: 5px;", "padding: 4px;"),
-        ("min-width: 82px;", "min-width: 68px;"),
-        ("width: 8px;", "width: 6px;"),
-        ("min-height: 30px;", "min-height: 24px;"),
-    ]
-    stylesheet = DARK_STYLESHEET
-    for old, new in replacements:
-        stylesheet = stylesheet.replace(old, new)
-    return stylesheet
-
-
-BASE_STYLESHEET = _compact_stylesheet()
+BASE_STYLESHEET = DARK_STYLESHEET
 
 
 _stylesheet_cache: dict[float, str] = {}

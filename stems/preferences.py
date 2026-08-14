@@ -53,6 +53,8 @@ class Preferences:
     sticky_panel_position: bool = True
     panel_x: int | None = None
     panel_y: int | None = None
+    panel_width: int | None = None
+    panel_height: int | None = None
     stem_name_format: str = DEFAULT_STEM_NAME_FORMAT
     folder_name_format: str = DEFAULT_FOLDER_NAME_FORMAT
     stem_name_presets: list[NamingPreset] = field(default_factory=list)
