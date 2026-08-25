@@ -9,7 +9,6 @@ from .automation import find_ableton_app_path, osascript, wait_for_live_window
 from .errors import DependencyError, ExportAutomationError
 from .models import ExportItemResult, ExportJob, ExportResult
 from .naming import escape_applescript, stem_file_name
-from .project import rename_old_stems_folders
 from .preflight import run_export_preflight
 
 
@@ -20,7 +19,7 @@ CancelCheck = Callable[[], bool]
 
 
 def wait_for_new_wav(
-    stems_dir: Path,
+    output_path: Path,
     export_start: float,
     timeout: int = EXPORT_TIMEOUT,
     clock=time.time,
@@ -28,16 +27,15 @@ def wait_for_new_wav(
 ) -> Path | None:
     deadline = clock() + timeout
     while clock() < deadline:
-        for file_path in stems_dir.glob("*.wav"):
-            try:
-                stat = file_path.stat()
-                if stat.st_mtime >= export_start:
-                    size_before = stat.st_size
-                    sleep(0.3)
-                    if file_path.stat().st_size == size_before and size_before > 0:
-                        return file_path
-            except FileNotFoundError:
-                continue
+        try:
+            stat = output_path.stat()
+            if stat.st_mtime >= export_start:
+                size_before = stat.st_size
+                sleep(0.3)
+                if output_path.stat().st_size == size_before and size_before > 0:
+                    return output_path
+        except FileNotFoundError:
+            pass
         sleep(0.2)
     return None
 
@@ -132,6 +130,9 @@ class ExportAutomation:
                         set s to first sheet of w
                         set value of text field 1 of s to "{folder_escaped}"
                         delay 0.2
+                        if value of text field 1 of s is not "{folder_escaped}" then
+                            return "ERROR: destination folder was not entered correctly"
+                        end if
                         key code 36
                         set gotFolder to true
                         exit repeat
@@ -199,7 +200,7 @@ end tell''',
             raise ExportAutomationError(result or "Export scripting failed.")
 
         callback("wait", "Waiting for exported file")
-        new_file = wait_for_new_wav(stems_dir, export_start, timeout=EXPORT_TIMEOUT, sleep=self.sleep)
+        new_file = wait_for_new_wav(output_path, export_start, timeout=EXPORT_TIMEOUT, sleep=self.sleep)
         if new_file is None:
             raise ExportAutomationError("Timed out waiting for exported WAV file.")
 
@@ -248,7 +249,6 @@ def execute_export_job(
     should_cancel = cancel_check or (lambda: False)
     tracks = job.selected_tracks
     items: list[ExportItemResult] = []
-    first_export = True
     callback("preflight", "Running export preflight checks")
     run_export_preflight(
         ableton_client=ableton_client,
@@ -257,8 +257,6 @@ def execute_export_job(
         app_path_finder=export_automation.app_path_finder,
         script_runner=export_automation.script_runner,
     )
-    if job.stems_dir.parent.resolve() == job.project_folder.resolve():
-        rename_old_stems_folders(job.project_folder, job.stems_dir.name)
     job.stems_dir.mkdir(parents=True, exist_ok=True)
     original_solos = {track.index: ableton_client.get_track_solo(track.index) for track in tracks}
 
@@ -292,7 +290,7 @@ def execute_export_job(
                 export_automation.trigger_export(
                     output_path,
                     job.project_folder,
-                    navigate_folder=first_export,
+                    navigate_folder=True,
                     progress=callback,
                 )
             except ExportAutomationError as exc:
@@ -301,7 +299,6 @@ def execute_export_job(
             else:
                 items.append(ExportItemResult(track=track, output_path=output_path, status="success"))
                 callback("success", f"Exported {track.name}")
-                first_export = False
             time.sleep(0.5)
     finally:
         for track in tracks:

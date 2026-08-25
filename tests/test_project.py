@@ -80,14 +80,6 @@ def test_get_project_info_includes_window_title_error_detail():
         raise AssertionError("Expected ProjectDetectionError")
 
 
-def test_rename_old_stems_folders_renames_legacy_folder(tmp_path):
-    legacy = tmp_path / "Stems"
-    legacy.mkdir()
-    new_name = "Song - January 01 2026 - Stems - 120 BPM"
-    project.rename_old_stems_folders(tmp_path, new_name)
-    assert (tmp_path / new_name).exists()
-
-
 def test_get_stems_folder_creates_directory(tmp_path):
     stems_dir = project.get_stems_folder(tmp_path, "Song", None, 120)
     assert stems_dir.exists()

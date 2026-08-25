@@ -37,7 +37,11 @@ class AppState:
         if self.project is None:
             raise RuntimeError("scan_current_set() must run before build_export_job().")
         song = custom_song_name or self.project.song_name
-        stems_root = self.project.project_folder if destination_root is None else Path(destination_root)
+        # Stem exports live with the detected .als project. Keep the legacy
+        # argument for API compatibility, but do not let a saved preference
+        # redirect an export away from its project.
+        del destination_root
+        stems_root = self.project.project_folder
         stems_dir = self.stems_folder_getter(
             stems_root, song, key, self.project.bpm, format_string=folder_name_format,
         )

@@ -20,7 +20,6 @@ try:
         QCheckBox,
         QComboBox,
         QDialog,
-        QFileDialog,
         QHBoxLayout,
         QLabel,
         QLineEdit,
@@ -430,11 +429,6 @@ class MainWindow(QMainWindow):
         self.destination_value.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.destination_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
-        self.choose_destination_button = QPushButton("Choose...")
-        self.choose_destination_button.setObjectName("secondary")
-        self.choose_destination_button.setMinimumHeight(int(self.ui_sizes["field_height"]))
-        self.choose_destination_button.clicked.connect(self.choose_destination_folder)
-
         project_label = self._build_field_label("Project")
         project_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         key_label = self._build_field_label("Key")
@@ -451,7 +445,6 @@ class MainWindow(QMainWindow):
         destination_layout.setContentsMargins(0, 0, 0, 0)
         destination_layout.setSpacing(8)
         destination_layout.addWidget(self.destination_value, 1)
-        destination_layout.addWidget(self.choose_destination_button)
 
         self.export_field_pairs = (
             (project_label, self.project_name_input),
@@ -819,36 +812,19 @@ class MainWindow(QMainWindow):
         custom_song_name = self.project_name_input.text().strip() or None
         key = self.key_input.text().strip() or None
         replace_mode = self.replace_mode.currentData()
-        destination_root = (self.preferences.export_destination_root or "").strip() or None
         job = self.state.build_export_job(
             key=key,
             replace_mode=replace_mode,
-            destination_root=destination_root,
+            destination_root=None,
             custom_song_name=custom_song_name,
             stem_name_format=self.preferences.stem_name_format,
             folder_name_format=self.preferences.folder_name_format,
         )
         self.current_job = replace(job, tracks=tracks)
         self.destination_value.setText(self.current_job.stems_dir.name or "-")
+        self.destination_value.setToolTip(str(self.current_job.stems_dir))
         self._set_export_enabled(bool(self.current_job.selected_tracks))
         self._set_open_available(True)
-
-    def choose_destination_folder(self) -> None:
-        start_dir = (
-            (self.preferences.export_destination_root or "").strip()
-            or (str(self.project.project_folder) if self.project is not None else str(Path.home()))
-        )
-        selected = QFileDialog.getExistingDirectory(
-            self,
-            "Choose Export Destination",
-            start_dir,
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
-        )
-        if not selected:
-            return
-        self.preferences.export_destination_root = selected
-        self.preferences_store.save(self.preferences)
-        self.update_destination_preview()
 
     def show_preferences(self) -> None:
         dialog = PreferencesDialog(self.preferences, self)

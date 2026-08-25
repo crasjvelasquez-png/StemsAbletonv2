@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-import re
 import subprocess
 from pathlib import Path
 
 from .errors import ProjectDetectionError
-from .naming import NEW_STEMS_PATTERN, stems_folder_name
+from .naming import stems_folder_name
 
 
 logger = logging.getLogger("stems")
@@ -158,23 +157,6 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[P
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     als_path = candidates[0]
     return als_path.parent, als_path.stem
-
-
-def rename_old_stems_folders(project_folder: Path, new_name: str) -> None:
-    target = project_folder / new_name
-    for item in sorted(project_folder.iterdir(), key=lambda path: path.stat().st_mtime):
-        if not item.is_dir() or item == target:
-            continue
-        if NEW_STEMS_PATTERN.match(item.name):
-            continue
-        if re.search(r"\bstem", item.name, re.IGNORECASE):
-            destination = target
-            suffix = 1
-            while destination.exists():
-                destination = project_folder / f"{new_name} ({suffix})"
-                suffix += 1
-            logger.info("  Renaming: '%s' -> '%s'", item.name, destination.name)
-            item.rename(destination)
 
 
 def get_stems_folder(

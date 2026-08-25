@@ -9,9 +9,9 @@ from .errors import AbletonConnectionError, ProjectDetectionError, StemsError
 from .export import ExportAutomation, execute_export_job
 from .logging_setup import configure_logging
 from .models import ExportResult, StemTrack
-from .naming import stems_folder_name
+from .naming import stem_file_name
 from .osc import OSCGateway
-from .project import get_stems_folder, rename_old_stems_folders
+from .project import get_stems_folder
 from .state import AppState
 
 
@@ -118,8 +118,6 @@ def export_stems() -> ExportResult:
     logger.info("Stems:   %s\n", ", ".join(track.name for track in tracks))
 
     key = ask_key()
-    new_folder_name = stems_folder_name(project.song_name, key, project.bpm)
-    rename_old_stems_folders(project.project_folder, new_folder_name)
     stems_dir = get_stems_folder(project.project_folder, project.song_name, key, project.bpm)
     logger.info("\nOutput dir: %s\n", stems_dir)
 
