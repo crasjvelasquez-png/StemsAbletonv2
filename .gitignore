@@ -37,3 +37,4 @@ venv/
 build/
 dist/
 *.spec.bak
+.claude/worktrees/naughty-fermi-f4c256/
