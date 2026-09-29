@@ -6,6 +6,7 @@ from pathlib import Path
 root = Path(SPECPATH)
 
 datas = [
+    (str(root / "assets/ui/chevron-down.svg"), "assets/ui"),
     (str(root / "assets/logo/stems-tower.png"), "assets/logo"),
 ]
 hiddenimports = [

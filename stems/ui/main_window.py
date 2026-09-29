@@ -56,21 +56,21 @@ COMPACT_LAYOUT_BREAKPOINT = 560
 UI_BASE_SIZES = {
     "window_min": MINIMUM_WINDOW_SIZE,
     "window_default": REFERENCE_WINDOW_SIZE,
-    "window_margins": (16, 8, 16, 16),
-    "window_spacing": 12,
+    "window_margins": (20, 12, 20, 20),
+    "window_spacing": 16,
     "header_button": 36,
     "section_spacing": 8,
-    "stem_panel_margins": (14, 10, 14, 10),
+    "stem_panel_margins": (8, 6, 8, 6),
     "stem_list_min_height": 140,
     "stem_row_height": 44,
-    "stem_row_margins": (16, 0, 16, 0),
+    "stem_row_margins": (10, 0, 10, 0),
     "stem_row_spacing": 12,
     "stem_index_width": 30,
     "stem_checkbox_size": 28,
     "stem_status_width": 68,
     # Includes stylesheet padding and borders; keep layout rows at the rendered control height.
     "field_height": 38,
-    "card_margins": (14, 10, 14, 12),
+    "card_margins": (16, 14, 16, 16),
     "card_spacing": 10,
     "progress_margins": (16, 10, 16, 10),
     "progress_spacing": 8,
@@ -291,10 +291,11 @@ class MainWindow(QMainWindow):
         self.content_layout.addWidget(self._build_current_set_section())
         self.content_layout.addWidget(self._build_detected_stems_section())
         self.content_layout.addWidget(self._build_export_section())
-        self.content_layout.addWidget(self._build_progress_section())
+        self.content_layout.addStretch(1)
 
         scroll_area.setWidget(scroll_content)
         self.window_layout.addWidget(scroll_area, 1)
+        self.window_layout.addWidget(self._build_progress_section())
         self.action_layout = self._build_action_row()
         self.window_layout.addLayout(self.action_layout)
 
@@ -317,6 +318,11 @@ class MainWindow(QMainWindow):
 
         self.app_title = QLabel("Stems")
         self.app_title.setObjectName("appTitle")
+        mark = QLabel()
+        mark.setPixmap(_app_icon().pixmap(QSize(28, 28)))
+        mark.setFixedSize(28, 28)
+        layout.addWidget(mark)
+        layout.addSpacing(8)
         layout.addWidget(self.app_title)
         layout.addStretch(1)
         layout.addWidget(self.preferences_button)
@@ -330,13 +336,11 @@ class MainWindow(QMainWindow):
         self.current_body_layout.setContentsMargins(*self.ui_sizes["card_margins"])
         self.current_body_layout.setSpacing(5)
 
-        eyebrow = QLabel("CURRENT SET")
-        eyebrow.setObjectName("currentSetEyebrow")
-
         self.song_value = QLabel("Not scanned")
         self.song_value.setObjectName("currentSetValue")
         self.song_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.song_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.song_value.setWordWrap(True)
 
         self.bpm_value = QLabel("-")
         self.bpm_value.setObjectName("currentSetBpm")
@@ -354,7 +358,6 @@ class MainWindow(QMainWindow):
         summary_row.addWidget(self.song_value, 1)
         summary_row.addWidget(self.bpm_value)
 
-        self.current_body_layout.addWidget(eyebrow)
         self.current_body_layout.addLayout(summary_row)
         self.current_body_layout.addWidget(self.path_value)
 
@@ -392,6 +395,13 @@ class MainWindow(QMainWindow):
         self.track_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.track_list.setMinimumHeight(int(self.ui_sizes["stem_list_min_height"]))
         self.stem_panel_layout.addWidget(self.track_list)
+        self.empty_stems_label = QLabel("Scan your Ableton set to find stems.\nUse ALL-CAPS names for your stem buses.")
+        self.empty_stems_label.setObjectName("emptyStems")
+        self.empty_stems_label.setAlignment(Qt.AlignCenter)
+        self.empty_stems_label.setWordWrap(True)
+        self.empty_stems_label.setMinimumHeight(int(self.ui_sizes["stem_list_min_height"]))
+        self.stem_panel_layout.addWidget(self.empty_stems_label)
+        self.track_list.hide()
 
         self.stems_layout.addLayout(title_row)
         self.stems_layout.addWidget(list_panel, 1)
@@ -425,6 +435,8 @@ class MainWindow(QMainWindow):
 
         self.destination_value = QLabel("-")
         self.destination_value.setObjectName("destinationPath")
+        self.destination_value.setWordWrap(True)
+        self.destination_value.setMinimumWidth(0)
         self.destination_value.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.destination_value.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.destination_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -550,7 +562,8 @@ class MainWindow(QMainWindow):
         visible_buttons = [button for button in self.action_buttons if not button.isHidden()]
         if compact:
             for index, button in enumerate(visible_buttons):
-                self.action_layout.addWidget(button, index // 2, index % 2)
+                span = 2 if index == len(visible_buttons) - 1 and len(visible_buttons) % 2 else 1
+                self.action_layout.addWidget(button, index // 2, index % 2, 1, span)
             self.action_layout.setColumnStretch(0, 1)
             self.action_layout.setColumnStretch(1, 1)
             self.action_layout.setColumnStretch(2, 0)
@@ -573,10 +586,11 @@ class MainWindow(QMainWindow):
             self.export_options_layout.setColumnStretch(0, 1)
             self.export_options_layout.setColumnStretch(1, 0)
         else:
-            positions = ((0, 0), (0, 1), (2, 0), (2, 1))
+            positions = ((0, 0), (0, 1), (2, 0), (4, 0))
             for (label, control), (row, column) in zip(self.export_field_pairs, positions):
-                self.export_options_layout.addWidget(label, row, column)
-                self.export_options_layout.addWidget(control, row + 1, column)
+                span = 2 if row >= 2 else 1
+                self.export_options_layout.addWidget(label, row, column, 1, span)
+                self.export_options_layout.addWidget(control, row + 1, column, 1, span)
             self.export_options_layout.setColumnStretch(0, 1)
             self.export_options_layout.setColumnStretch(1, 1)
 
@@ -760,6 +774,9 @@ class MainWindow(QMainWindow):
         self.scan_button.setEnabled(True)
 
     def _populate_tracks(self, tracks: list[StemTrack]) -> None:
+        self.track_list.setVisible(bool(tracks))
+        self.empty_stems_label.setVisible(not tracks)
+        self.empty_stems_label.setText("No stem buses found.\nUse ALL-CAPS bus names in Ableton, then scan again.")
         self.track_list.clear()
         self.item_by_track_name.clear()
         self.status_by_track_name.clear()

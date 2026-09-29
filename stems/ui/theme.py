@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import re
+import sys
+from pathlib import Path
+
+_ASSET_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+_CHEVRON_PATH = (_ASSET_ROOT / "assets/ui/chevron-down.svg").as_posix()
 
 DESIGN_TOKENS = {
     "background": "#15171b",
@@ -9,13 +14,13 @@ DESIGN_TOKENS = {
     "panel_hover": "#2a3038",
     "field": "#171a1f",
     "field_hover": "#1d2127",
-    "border": "#353b45",
+    "border": "#30363e",
     "border_strong": "#4a525e",
     "separator": "#30363f",
     "text": "#dfe3e8",
     "text_strong": "#f2f4f7",
     "text_muted": "#aab2be",
-    "text_faint": "#737c89",
+    "text_faint": "#909aa7",
     "accent": "#69c7bc",
     "accent_hover": "#78d3c7",
     "accent_pressed": "#58b9ae",
@@ -24,7 +29,7 @@ DESIGN_TOKENS = {
     "danger": "#e85d5d",
     "accent_text": "#071614",
     "menu": "#1d2026",
-    "radius_panel": "8px",
+    "radius_panel": "12px",
     "radius_control": "7px",
     "radius_pill": "10px",
     "font_family": '".AppleSystemUIFont", "SF Pro Text", "Helvetica Neue"',
@@ -59,7 +64,7 @@ QWidget#appHeader {{
 
 QLabel#appTitle {{
     color: {DESIGN_TOKENS["text_strong"]};
-    font-family: "SF Pro Display", ".AppleSystemUIFont", "Helvetica Neue";
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
     font-size: 18px;
     font-weight: 600;
 }}
@@ -98,17 +103,10 @@ QLabel#destinationPath {{
     font-size: 13px;
 }}
 
-QLabel#currentSetEyebrow {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 10px;
-    font-weight: 500;
-}}
-
 QLabel#currentSetValue {{
     color: {DESIGN_TOKENS["text_strong"]};
-    font-family: "SF Pro Display", ".AppleSystemUIFont", "Helvetica Neue";
-    font-size: 17px;
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 21px;
     font-weight: 600;
 }}
 
@@ -130,6 +128,24 @@ QLabel#selectionCount {{
     font-family: "SF Mono", Menlo, monospace;
     font-size: 11px;
     font-weight: 500;
+}}
+
+QLabel#emptyStems {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 13px;
+    padding: 20px;
+}}
+
+QPushButton#headerAction:focus {{
+    border: 1px solid {DESIGN_TOKENS["accent"]};
+}}
+
+QCheckBox#stemRowCheckbox:focus {{
+    border: 2px solid {DESIGN_TOKENS["accent_hover"]};
+}}
+
+QComboBox#exportInput {{
+    padding-right: 34px;
 }}
 
 /* Export confirmation */
@@ -207,7 +223,7 @@ QLineEdit:hover {{
 }}
 
 QLineEdit:focus {{
-    border: 2px solid {DESIGN_TOKENS["accent"]};
+    border: 1px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QLineEdit:disabled {{
@@ -218,7 +234,7 @@ QLineEdit:disabled {{
 
 QLineEdit#exportInput,
 QComboBox#exportInput {{
-    min-height: 32px;
+    min-height: 24px;
     padding: 7px 10px;
 }}
 
@@ -227,7 +243,7 @@ QComboBox {{
     background-color: {DESIGN_TOKENS["field"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    padding: 7px 10px;
+    padding: 7px 34px 7px 10px;
     color: {DESIGN_TOKENS["text_strong"]};
     min-width: 124px;
     font-size: 13px;
@@ -239,7 +255,7 @@ QComboBox:hover {{
 }}
 
 QComboBox:focus {{
-    border: 2px solid {DESIGN_TOKENS["accent"]};
+    border: 1px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QComboBox:disabled {{
@@ -256,20 +272,16 @@ QComboBox::drop-down {{
 }}
 
 QComboBox::down-arrow {{
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {DESIGN_TOKENS["text_muted"]};
-    width: 0px;
-    height: 0px;
-    margin-right: 9px;
+    image: url("{_CHEVRON_PATH}");
+    width: 12px;
+    height: 12px;
 }}
 
 QComboBox QAbstractItemView {{
     background-color: {DESIGN_TOKENS["menu"]};
     border: 1px solid {DESIGN_TOKENS["border_strong"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    selection-background-color: rgba(124, 196, 240, 0.22);
+    selection-background-color: rgba(105, 199, 188, 0.22);
     selection-color: {DESIGN_TOKENS["text_strong"]};
     padding: 5px;
     outline: none;
@@ -295,11 +307,11 @@ QPushButton:hover {{
 
 QPushButton:pressed {{
     background-color: rgba(24, 27, 36, 0.68);
-    border-color: rgba(124, 196, 240, 0.24);
+    border-color: rgba(105, 199, 188, 0.24);
 }}
 
 QPushButton:focus {{
-    border: 2px solid {DESIGN_TOKENS["accent"]};
+    border: 1px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QPushButton:disabled {{
@@ -311,24 +323,24 @@ QPushButton:disabled {{
 QPushButton#primaryAction {{
     background-color: {DESIGN_TOKENS["accent"]};
     color: {DESIGN_TOKENS["accent_text"]};
-    border: 1px solid rgba(196, 232, 255, 0.62);
+    border: 1px solid rgba(105, 199, 188, 0.62);
     font-weight: 600;
 }}
 
 QPushButton#primaryAction:hover {{
     background-color: {DESIGN_TOKENS["accent_hover"]};
-    border-color: rgba(220, 244, 255, 0.72);
+    border-color: rgba(120, 211, 199, 0.72);
 }}
 
 QPushButton#primaryAction:pressed {{
     background-color: {DESIGN_TOKENS["accent_pressed"]};
-    border-color: rgba(124, 196, 240, 0.58);
+    border-color: rgba(105, 199, 188, 0.58);
 }}
 
 QPushButton#primaryAction:disabled {{
-    background-color: rgba(124, 196, 240, 0.20);
+    background-color: rgba(105, 199, 188, 0.20);
     color: rgba(230, 244, 255, 0.44);
-    border-color: rgba(124, 196, 240, 0.16);
+    border-color: rgba(105, 199, 188, 0.16);
 }}
 
 QPushButton#secondary {{
@@ -349,24 +361,24 @@ QPushButton[actionBarButton="true"] {{
 QPushButton#primaryAction[actionBarButton="true"] {{
     background-color: {DESIGN_TOKENS["accent"]};
     color: {DESIGN_TOKENS["accent_text"]};
-    border-color: rgba(196, 232, 255, 0.46);
+    border-color: rgba(105, 199, 188, 0.46);
     font-weight: 600;
 }}
 
 QPushButton#primaryAction[actionBarButton="true"]:hover {{
     background-color: {DESIGN_TOKENS["accent_hover"]};
-    border-color: rgba(220, 244, 255, 0.58);
+    border-color: rgba(120, 211, 199, 0.58);
 }}
 
 QPushButton#primaryAction[actionBarButton="true"]:pressed {{
     background-color: {DESIGN_TOKENS["accent_pressed"]};
-    border-color: rgba(160, 218, 252, 0.54);
+    border-color: rgba(105, 199, 188, 0.54);
 }}
 
 QPushButton#primaryAction[actionBarButton="true"]:disabled {{
-    background-color: rgba(124, 196, 240, 0.16);
+    background-color: rgba(105, 199, 188, 0.16);
     color: rgba(230, 244, 255, 0.42);
-    border-color: rgba(124, 196, 240, 0.22);
+    border-color: rgba(105, 199, 188, 0.22);
 }}
 
 QPushButton#secondary[actionBarButton="true"] {{
@@ -384,7 +396,7 @@ QPushButton#secondary[actionBarButton="true"]:hover {{
 
 QPushButton#secondary[actionBarButton="true"]:pressed {{
     background-color: rgba(24, 27, 36, 0.54);
-    border-color: rgba(124, 196, 240, 0.22);
+    border-color: rgba(105, 199, 188, 0.22);
 }}
 
 QPushButton#secondary[actionBarButton="true"]:disabled {{
@@ -713,9 +725,9 @@ QLabel#preferencesError {{
 }}
 
 QLabel#presetDefaultBadge {{
-    background-color: rgba(124, 196, 240, 0.16);
+    background-color: rgba(105, 199, 188, 0.16);
     color: {DESIGN_TOKENS["accent_hover"]};
-    border: 1px solid rgba(124, 196, 240, 0.42);
+    border: 1px solid rgba(105, 199, 188, 0.42);
     border-radius: 8px;
     padding: 2px 8px;
     font-size: 11px;
@@ -734,12 +746,12 @@ QPushButton#tokenButton {{
 }}
 
 QPushButton#tokenButton:hover {{
-    background-color: rgba(124, 196, 240, 0.14);
-    border-color: rgba(161, 220, 251, 0.72);
+    background-color: rgba(105, 199, 188, 0.14);
+    border-color: rgba(120, 211, 199, 0.72);
 }}
 
 QPushButton#tokenButton:pressed {{
-    background-color: rgba(124, 196, 240, 0.24);
+    background-color: rgba(105, 199, 188, 0.24);
 }}
 
 QPushButton#tokenButton:focus,
@@ -756,7 +768,7 @@ QPushButton#presetDefaultAction {{
 
 QPushButton#presetDefaultAction {{
     color: {DESIGN_TOKENS["accent_hover"]};
-    border-color: rgba(124, 196, 240, 0.56);
+    border-color: rgba(105, 199, 188, 0.56);
 }}
 
 QLabel#preferencesPreview {{
@@ -810,7 +822,7 @@ QMenu::item {{
 }}
 
 QMenu::item:selected {{
-    background-color: rgba(124, 196, 240, 0.20);
+    background-color: rgba(105, 199, 188, 0.20);
     color: {DESIGN_TOKENS["text_strong"]};
 }}
 
