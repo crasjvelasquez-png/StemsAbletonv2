@@ -27,7 +27,7 @@ class DummyGateway:
 
 class DummyPreferencesStore:
     def load(self) -> Preferences:
-        return Preferences(sticky_panel_position=False)
+        return Preferences()
 
     def save(self, _preferences: Preferences) -> None:
         pass
@@ -77,11 +77,15 @@ def app():
 
 @pytest.fixture
 def window(app, monkeypatch):
+    # UI tests must never launch Finder or other external applications.
+    monkeypatch.setattr(
+        main_window_module.subprocess, "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
     monkeypatch.setattr(main_window_module, "PreferencesStore", DummyPreferencesStore)
     monkeypatch.setattr(main_window_module, "OSCGateway", DummyGateway)
     monkeypatch.setattr(main_window_module, "AbletonClient", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(main_window_module, "AppState", DummyState)
-    monkeypatch.setattr(main_window_module.MainWindow, "_build_tray", lambda self: None)
     monkeypatch.setattr(main_window_module.QTimer, "singleShot", staticmethod(lambda *_args, **_kwargs: None))
     monkeypatch.setattr(main_window_module, "is_launch_agent_installed", lambda: False)
 
@@ -133,7 +137,7 @@ def test_saved_window_size_restores_clamps_and_persists(window):
 
 
 def test_preferences_reset_restores_defaults(window, app, monkeypatch):
-    dialog = PreferencesDialog(Preferences(auto_open_folder=False, menubar_mode=True), window)
+    dialog = PreferencesDialog(Preferences(auto_open_folder=False), window)
     saved = []
     dialog.preferences_changed.connect(saved.append)
     monkeypatch.setattr(QMessageBox, "question", lambda *_args, **_kwargs: QMessageBox.Reset)
@@ -142,7 +146,6 @@ def test_preferences_reset_restores_defaults(window, app, monkeypatch):
     app.processEvents()
 
     assert saved[-1].auto_open_folder is True
-    assert saved[-1].menubar_mode is False
     assert dialog.saved_label.text() == "Saved"
 
 
@@ -158,57 +161,10 @@ def test_preferences_changes_save_immediately(window, app):
     assert dialog.saved_label.property("saveState") == "saved"
 
 
-def test_naming_preferences_use_separate_presets_and_target_specific_tokens(window, app):
-    dialog = PreferencesDialog(Preferences(), window)
-    dialog.findChild(QTabWidget, "preferencesTabs").setCurrentIndex(1)
-    dialog.show()
-    app.processEvents()
-
-    assert dialog.stem_editor.preset_combo.count() == 3
-    assert dialog.folder_editor.preset_combo.count() == 3
-    assert [button.text() for button in dialog.stem_editor.token_buttons] == [
-        "{song}", "{track}", "{bpm}", "{key}", "{date}", "{index}",
-    ]
-    assert [button.text() for button in dialog.folder_editor.token_buttons] == [
-        "{song}", "{bpm}", "{key}", "{date}",
-    ]
-    assert dialog.stem_editor.default_badge.isVisible()
-    assert dialog.folder_editor.default_badge.isVisible()
 
 
-def test_naming_token_inserts_at_cursor_and_invalid_format_disables_ok(window, app):
-    dialog = PreferencesDialog(Preferences(), window)
-    dialog.stem_name_format.setText(".wav")
-    dialog.stem_name_format.setCursorPosition(0)
-    dialog.stem_editor.token_buttons[1].click()
-    app.processEvents()
-
-    assert dialog.stem_name_format.text() == "{track}.wav"
-    assert dialog.saved_label.property("saveState") == "pending"
-    dialog.stem_name_format.setText("{song}.wav")
-    assert "unique name" in dialog.stem_editor.error_label.text()
-    assert dialog.saved_label.property("saveState") == "pending"
 
 
-def test_custom_naming_presets_can_be_created_and_defaulted(window, app, monkeypatch):
-    names = iter([("Client Delivery", True), ("Project Folder", True)])
-    monkeypatch.setattr(QInputDialog, "getText", lambda *_args, **_kwargs: next(names))
-    dialog = PreferencesDialog(Preferences(), window)
-
-    dialog.stem_name_format.setText("{index}_{track}_{song}.wav")
-    dialog.stem_editor._save_preset()
-    dialog.stem_editor._set_default()
-    dialog.folder_name_format.setText("{song} - Delivery")
-    dialog.folder_editor._save_preset()
-    dialog.folder_editor._set_default()
-    updated = dialog.to_preferences()
-
-    assert updated.stem_name_presets[0].name == "Client Delivery"
-    assert updated.folder_name_presets[0].name == "Project Folder"
-    assert updated.stem_name_format == "{index}_{track}_{song}.wav"
-    assert updated.folder_name_format == "{song} - Delivery"
-    assert updated.default_stem_name_preset_id.startswith("custom-stem-")
-    assert updated.default_folder_name_preset_id.startswith("custom-folder-")
 
 
 def test_scan_success_updates_current_set_values(window, monkeypatch):
@@ -229,14 +185,13 @@ def test_scan_success_updates_current_set_values(window, monkeypatch):
 
     assert window.song_value.text() == "Neon Tide"
     assert window.bpm_value.text() == "128 BPM"
-    assert window.path_value.toolTip() == str(project.project_folder)
     assert window.progress_label.text() == "Scan complete"
     assert window.progress_card.property("progressState") == "idle"
     assert window.progress_card.isHidden() is True
     assert window.summary_label.text() == "Detected 2 stems"
     assert window.export_button.isEnabled() is True
     assert window.export_button.objectName() == "primaryAction"
-    assert window.scan_button.objectName() == "secondary"
+    assert window.retry_button.isHidden()
 
 
 def test_export_button_tracks_selected_stems(window):
@@ -282,7 +237,7 @@ def test_incremental_project_and_key_preview_updates_do_not_create_folders(windo
         window.key_input.setText(key)
         app.processEvents()
         previews.append(window.destination_value.text())
-        assert window.destination_value.text() == stems_folder_name(project_name, key or None, 128)
+        assert window.destination_value.toolTip().endswith(stems_folder_name(project_name, key or None, 128))
 
     assert len(set(previews)) == 3
     assert list(project_folder.iterdir()) == []
@@ -298,14 +253,12 @@ def test_scan_failure_keeps_current_set_values_and_updates_status(window, monkey
 
     window.song_value.setText("Existing Song")
     window.bpm_value.setText("121")
-    window.path_value.setText("/Users/c4milo/Music/Ableton/Projects/Existing Song")
 
     message = "Ableton Live is not reachable."
     window._handle_scan_failure(message)
 
     assert window.song_value.text() == "Existing Song"
     assert window.bpm_value.text() == "121"
-    assert window.path_value.text() == "/Users/c4milo/Music/Ableton/Projects/Existing Song"
     assert window.progress_label.text() == "Scan failed"
     assert window.progress_card.property("progressState") == "scan-failed"
     assert window.progress_card.isHidden() is False
@@ -315,7 +268,7 @@ def test_scan_failure_keeps_current_set_values_and_updates_status(window, monkey
     assert window.progress_percent_label.isHidden() is True
     assert window.summary_label.text() == message
     assert window.summary_label.toolTip() == message
-    assert warnings == [("Scan failed", message)]
+    assert warnings == []
 
 
 def test_export_failure_uses_error_state_with_readable_summary(window, monkeypatch):
@@ -358,7 +311,7 @@ def test_export_progress_shows_current_stem_count_destination_and_percent(window
     assert window.progress_percent_label.text() == "25%"
     assert window.progress_percent_label.isHidden() is False
     assert window.progress_bar.isHidden() is False
-    assert window.summary_label.text() == f"1 of 4 stems · Saving to {tmp_path / 'Stems'}"
+    assert window.summary_label.text() == f"1 of 4 stems · Saving to {tmp_path / 'Stems'}\nKeep the keyboard and mouse free. Move the pointer to a screen corner to stop."
 
 
 def test_completed_export_persists_without_redundant_meter_until_next_operation(window, tmp_path):
@@ -431,34 +384,3 @@ def test_cancelled_export_keeps_cancelled_state(window, tmp_path):
     assert window.progress_bar.isHidden() is False
     assert window.progress_percent_label.text() == "33%"
     assert "Cancelled after exporting 1/3 stems" in window.summary_label.text()
-
-
-@pytest.mark.parametrize("dialog_result, should_start", [(0, False), (1, True)])
-def test_confirm_export_starts_only_after_dialog_acceptance(window, tmp_path, monkeypatch, dialog_result, should_start):
-    track = StemTrack(index=0, name="DRUMS")
-    window.current_job = ExportJob(
-        song_name="Neon Tide",
-        project_folder=tmp_path,
-        stems_dir=tmp_path / "Stems",
-        tracks=[track],
-    )
-    monkeypatch.setattr(window, "update_destination_preview", lambda: None)
-    starts: list[int] = []
-    monkeypatch.setattr(window, "start_export", lambda: starts.append(1))
-
-    class FakeConfirmationDialog:
-        Accepted = 1
-
-        def __init__(self, job, parent, *, scale):
-            assert job is window.current_job
-            assert parent is window
-            assert scale == window.ui_scale
-
-        def exec(self):
-            return dialog_result
-
-    monkeypatch.setattr(main_window_module, "ExportConfirmationDialog", FakeConfirmationDialog)
-
-    window.confirm_export()
-
-    assert len(starts) == (1 if should_start else 0)

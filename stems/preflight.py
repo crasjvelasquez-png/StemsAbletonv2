@@ -8,17 +8,17 @@ from .errors import PreflightCheckError
 
 def check_ableton_running(app_path_finder: Callable[[], str | None]) -> None:
     if app_path_finder() is None:
-        raise PreflightCheckError("Ableton Live is not running.")
+        raise PreflightCheckError("Open Ableton Live and a saved set, then click Try Again.")
 
 
 def check_osc_reachable(ableton_client) -> None:
     if ableton_client.get_track_count() <= 0:
-        raise PreflightCheckError("AbletonOSC is not reachable.")
+        raise PreflightCheckError("Ableton isn't connected. Select AbletonOSC as a Control Surface in Live > Settings > Link, Tempo & MIDI, then click Try Again.")
 
 
 def check_project_saved(project_folder: Path, song_name: str) -> None:
     if not song_name.strip():
-        raise PreflightCheckError("Project name is missing.")
+        raise PreflightCheckError("Save the Ableton set with a name, then click Try Again.")
     if not project_folder.exists() or not project_folder.is_dir():
         raise PreflightCheckError("Project folder does not exist. Save the Ableton project first.")
 
@@ -36,9 +36,9 @@ tell application "System Events"
 end tell''',
         timeout=5,
     )
-    if result.startswith("ERROR"):
+    if not result.isdigit() or int(result) < 1:
         raise PreflightCheckError(
-            "Accessibility access is required to control Ableton's export dialog."
+            "Allow Stems in System Settings > Privacy & Security > Accessibility, then click Try Again. If running from source, allow your Python app or terminal instead."
         )
 
 

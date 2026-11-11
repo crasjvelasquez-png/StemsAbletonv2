@@ -89,7 +89,7 @@ class ExportAutomation:
         del project_folder
         callback = progress or (lambda _event, _message: None)
         pyautogui = self.pyautogui
-        pyautogui.FAILSAFE = False
+        pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
 
         stems_dir = output_path.parent
@@ -222,7 +222,7 @@ end tell''',
         last_error: ExportAutomationError | None = None
         for attempt in range(1, self.retry_attempts + 1):
             try:
-                callback("attempt", f"Export attempt {attempt}/{self.retry_attempts}")
+                callback("attempt", "Preparing stem" if attempt == 1 else "Trying this stem again")
                 return self._trigger_export_once(
                     output_path,
                     project_folder,
@@ -231,7 +231,7 @@ end tell''',
                 )
             except ExportAutomationError as exc:
                 last_error = exc
-                callback("retry", f"Attempt {attempt} failed: {exc}")
+                callback("retry", f"Could not export this stem: {exc}")
                 self.reset_export_ui()
         raise ExportAutomationError(
             f"Export failed after {self.retry_attempts} attempts: {last_error}"
@@ -249,7 +249,7 @@ def execute_export_job(
     should_cancel = cancel_check or (lambda: False)
     tracks = job.selected_tracks
     items: list[ExportItemResult] = []
-    callback("preflight", "Running export preflight checks")
+    callback("preflight", "Checking Ableton is ready")
     run_export_preflight(
         ableton_client=ableton_client,
         project_folder=job.project_folder,

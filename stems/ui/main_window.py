@@ -2,24 +2,23 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
+import html
 from dataclasses import replace
 from pathlib import Path
 
 from ..ableton import AbletonClient
 from ..models import ExportJob, ExportResult, StemTrack
 from ..osc import OSCGateway
-from ..preferences import Preferences, PreferencesStore, RecentExport, append_recent_export
-from ..reporting import build_export_summary
+from ..preferences import Preferences, PreferencesStore
 from ..state import AppState
 
 try:
-    from PySide6.QtCore import QPointF, QSize, QThread, QTimer, Qt
+    from PySide6.QtCore import QEvent, QPointF, QSize, QThread, QTimer, Qt
     from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
     from PySide6.QtWidgets import (
         QAbstractItemView,
         QCheckBox,
-        QComboBox,
-        QDialog,
         QHBoxLayout,
         QLabel,
         QLineEdit,
@@ -28,22 +27,19 @@ try:
         QFrame,
         QGridLayout,
         QMainWindow,
-        QMenu,
         QMessageBox,
         QPushButton,
         QProgressBar,
         QScrollArea,
         QSizePolicy,
-        QSystemTrayIcon,
         QVBoxLayout,
         QWidget,
     )
 except ImportError as exc:
     raise SystemExit("PySide6 is not installed. Run: pip install PySide6") from exc
 
-from ..login_item import install_launch_agent, is_launch_agent_installed, remove_launch_agent
+from ..login_item import is_launch_agent_installed, remove_launch_agent
 from .preferences_dialog import PreferencesDialog
-from .export_confirmation_dialog import ExportConfirmationDialog
 from .theme import stylesheet_for_scale
 from .worker import ExportWorker, ScanWorker
 
@@ -77,9 +73,7 @@ UI_BASE_SIZES = {
     "progress_header_spacing": 10,
     "progress_percent_width": 34,
     "progress_bar_height": 4,
-    "progress_detail_max_height": 34,
     "progress_min_height": 90,
-    "progress_max_height": 110,
     "action_margins": (0, 8, 0, 0),
     "action_spacing": 12,
     "action_height": 36,
@@ -229,7 +223,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Stems")
         self.setWindowIcon(_app_icon())
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window)
 
         self.preferences_store = PreferencesStore()
         self.preferences = self.preferences_store.load()
@@ -249,22 +243,22 @@ class MainWindow(QMainWindow):
         self.export_worker: ExportWorker | None = None
         self.item_by_track_name: dict[str, QListWidgetItem] = {}
         self.status_by_track_name: dict[str, QLabel] = {}
-        self.tray_icon: QSystemTrayIcon | None = None
         self.export_cancel_requested = False
         self._ui_ready = False
-        self._startup_scan = False
         self._compact_layout: bool | None = None
-        self._full_project_path = "-"
+        self._pending_export = False
+        self._scan_snapshot = None
+        self._scan_selection = set()
+        self._last_scan = 0.0
+        self._closing = False
+        self._readiness_ok = False
 
         self._build_ui()
         self._ui_ready = True
         self._apply_preferences_to_ui()
-        self._build_tray()
-        def _auto_scan():
-            self._startup_scan = True
-            self.scan_current_set()
-
-        QTimer.singleShot(0, _auto_scan)
+        if is_launch_agent_installed():
+            remove_launch_agent()
+        QTimer.singleShot(0, self.scan_current_set)
 
     def _build_ui(self) -> None:
         self.setStyleSheet(stylesheet_for_scale(self.ui_scale))
@@ -346,12 +340,6 @@ class MainWindow(QMainWindow):
         self.bpm_value.setObjectName("currentSetBpm")
         self.bpm_value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        self.path_value = QLabel("-")
-        self.path_value.setObjectName("currentSetPathValue")
-        self.path_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.path_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.path_value.setToolTip("-")
-
         summary_row = QHBoxLayout()
         summary_row.setContentsMargins(0, 0, 0, 0)
         summary_row.setSpacing(12)
@@ -359,7 +347,6 @@ class MainWindow(QMainWindow):
         summary_row.addWidget(self.bpm_value)
 
         self.current_body_layout.addLayout(summary_row)
-        self.current_body_layout.addWidget(self.path_value)
 
         return section
 
@@ -395,7 +382,7 @@ class MainWindow(QMainWindow):
         self.track_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.track_list.setMinimumHeight(int(self.ui_sizes["stem_list_min_height"]))
         self.stem_panel_layout.addWidget(self.track_list)
-        self.empty_stems_label = QLabel("Scan your Ableton set to find stems.\nUse ALL-CAPS names for your stem buses.")
+        self.empty_stems_label = QLabel("Open a saved Ableton set to find stems.\nName the groups you want exported in ALL CAPS.")
         self.empty_stems_label.setObjectName("emptyStems")
         self.empty_stems_label.setAlignment(Qt.AlignCenter)
         self.empty_stems_label.setWordWrap(True)
@@ -426,31 +413,25 @@ class MainWindow(QMainWindow):
         self.key_input.setPlaceholderText("Optional key, e.g. F# Minor")
         self.key_input.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.key_input.textChanged.connect(self.update_destination_preview)
-        self.replace_mode = QComboBox()
-        self.replace_mode.setObjectName("exportInput")
-        self.replace_mode.addItem("Replace existing files", "replace")
-        self.replace_mode.addItem("Skip existing files", "keep")
-        self.replace_mode.setMinimumHeight(int(self.ui_sizes["field_height"]))
-        self.replace_mode.currentIndexChanged.connect(self.update_destination_preview)
-
         self.destination_value = QLabel("-")
-        self.destination_value.setObjectName("destinationPath")
+        self.destination_value.setObjectName("muted")
         self.destination_value.setWordWrap(True)
         self.destination_value.setMinimumWidth(0)
         self.destination_value.setMinimumHeight(int(self.ui_sizes["field_height"]))
         self.destination_value.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.destination_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.destination_value.setFocusPolicy(Qt.StrongFocus)
+        self.destination_value.setTextFormat(Qt.RichText)
+        self.destination_value.setTextInteractionFlags(Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
+        self.destination_value.linkActivated.connect(self.open_export_folder)
 
-        project_label = self._build_field_label("Project")
+        project_label = self._build_field_label("Song name")
         project_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         key_label = self._build_field_label("Key")
         key_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        mode_label = self._build_field_label("Mode")
-        mode_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        dest_label = self._build_field_label("Destination")
+        dest_label = self._build_field_label("Saves to")
         dest_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.export_labels = (project_label, key_label, mode_label, dest_label)
+        self.export_labels = (project_label, key_label, dest_label)
         self.destination_control = QWidget()
         self.destination_control.setObjectName("destinationControl")
         destination_layout = QHBoxLayout(self.destination_control)
@@ -461,7 +442,6 @@ class MainWindow(QMainWindow):
         self.export_field_pairs = (
             (project_label, self.project_name_input),
             (key_label, self.key_input),
-            (mode_label, self.replace_mode),
             (dest_label, self.destination_control),
         )
         self._arrange_export_fields(compact=False)
@@ -477,7 +457,6 @@ class MainWindow(QMainWindow):
         self.progress_layout.setContentsMargins(*self.ui_sizes["progress_margins"])
         self.progress_layout.setSpacing(int(self.ui_sizes["progress_spacing"]))
         section.setMinimumHeight(int(self.ui_sizes["progress_min_height"]))
-        section.setMaximumHeight(int(self.ui_sizes["progress_max_height"]))
 
         self.progress_label = QLabel("")
         self.progress_label.setObjectName("progressStatus")
@@ -510,7 +489,6 @@ class MainWindow(QMainWindow):
         self.summary_label.setWordWrap(True)
         self.summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.summary_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.summary_label.setMaximumHeight(int(self.ui_sizes["progress_detail_max_height"]))
 
         self.progress_layout.addLayout(self.progress_status_row)
         self.progress_layout.addWidget(self.progress_bar)
@@ -522,12 +500,13 @@ class MainWindow(QMainWindow):
         actions = QGridLayout()
         actions.setContentsMargins(*self.ui_sizes["action_margins"])
         actions.setSpacing(int(self.ui_sizes["action_spacing"]))
-        self.scan_button = QPushButton("Scan Current Set")
-        self.scan_button.setObjectName("primaryAction")
-        self.scan_button.clicked.connect(self.scan_current_set)
+        self.retry_button = QPushButton("Try Again")
+        self.retry_button.setObjectName("primaryAction")
+        self.retry_button.clicked.connect(self.scan_current_set)
+        self.retry_button.hide()
         self.export_button = QPushButton("Export Stems")
         self.export_button.setObjectName("secondary")
-        self.export_button.setToolTip("Scan a set and select at least one stem before exporting.")
+        self.export_button.setToolTip("Export selected stems, replacing files with the same names.")
         self.export_button.clicked.connect(self.confirm_export)
         self.export_button.setEnabled(False)
         self.cancel_button = QPushButton("Cancel")
@@ -540,12 +519,12 @@ class MainWindow(QMainWindow):
         self.open_button.clicked.connect(self.open_export_folder)
         self.open_button.setEnabled(False)
         self.open_button.hide()
-        self.action_buttons = (self.scan_button, self.open_button, self.cancel_button, self.export_button)
+        self.action_buttons = (self.retry_button, self.open_button, self.cancel_button, self.export_button)
         for button in self.action_buttons:
             button.setProperty("actionBarButton", True)
             button.setMinimumHeight(int(self.ui_sizes["action_height"]))
             button.setMaximumHeight(int(self.ui_sizes["action_height"]))
-        actions.addWidget(self.scan_button, 0, 0)
+        actions.addWidget(self.retry_button, 0, 0)
         actions.addWidget(self.open_button, 0, 1)
         actions.addWidget(self.cancel_button, 0, 2)
         actions.addWidget(self.export_button, 0, 3)
@@ -596,6 +575,8 @@ class MainWindow(QMainWindow):
 
     def _set_export_enabled(self, enabled: bool) -> None:
         self.export_button.setEnabled(enabled)
+        count = len(self.current_job.selected_tracks) if self.current_job else 0
+        self.export_button.setText(f"Export {count} Stem{'s' if count != 1 else ''}" if count else "Export Stems")
         self._refresh_action_hierarchy()
 
     def _set_open_available(self, available: bool) -> None:
@@ -612,9 +593,9 @@ class MainWindow(QMainWindow):
 
     def _refresh_action_hierarchy(self) -> None:
         export_is_primary = self.export_button.isEnabled()
-        self.scan_button.setObjectName("secondary" if export_is_primary else "primaryAction")
+        self.retry_button.setObjectName("secondary" if export_is_primary else "primaryAction")
         self.export_button.setObjectName("primaryAction" if export_is_primary else "secondary")
-        for button in (self.scan_button, self.export_button):
+        for button in (self.retry_button, self.export_button):
             button.style().unpolish(button)
             button.style().polish(button)
             button.update()
@@ -647,7 +628,6 @@ class MainWindow(QMainWindow):
             self._compact_layout = compact
             self._arrange_export_fields(compact)
             self._arrange_action_buttons(compact)
-        self._refresh_elided_project_path()
 
     def _apply_preferences_to_ui(self) -> None:
         width = self.preferences.panel_width
@@ -664,62 +644,36 @@ class MainWindow(QMainWindow):
         self._compact_layout = compact
         self._arrange_export_fields(compact)
         self._arrange_action_buttons(compact)
-        index = 0 if self.preferences.replace_mode == "replace" else 1
-        self.replace_mode.setCurrentIndex(index)
-        if self.preferences.sticky_panel_position and self.preferences.panel_x is not None and self.preferences.panel_y is not None:
+        if self.preferences.panel_x is not None and self.preferences.panel_y is not None:
             self.move(self.preferences.panel_x, self.preferences.panel_y)
 
-    def _set_project_path(self, path: str) -> None:
-        self._full_project_path = path
-        self.path_value.setToolTip(path)
-        self._refresh_elided_project_path()
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if (event.type() == QEvent.ActivationChange and self.isActiveWindow()
+                and getattr(self, "_ui_ready", False) and not self._closing
+                and time.monotonic() - self._last_scan > 2):
+            QTimer.singleShot(0, self._refresh_on_focus)
 
-    def _refresh_elided_project_path(self) -> None:
-        if not hasattr(self, "path_value"):
-            return
-        available_width = max(80, self.path_value.width())
-        self.path_value.setText(
-            self.path_value.fontMetrics().elidedText(
-                self._full_project_path,
-                Qt.ElideMiddle,
-                available_width,
-            )
-        )
+    def _refresh_on_focus(self) -> None:
+        if self.isActiveWindow() and not self._closing and self.export_thread is None and self.scan_thread is None:
+            self.scan_current_set()
 
-    def _build_tray(self) -> None:
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            return
-        self.tray_icon = QSystemTrayIcon(self)
-        if not self.windowIcon().isNull():
-            self.tray_icon.setIcon(self.windowIcon())
-        self.tray_icon.setToolTip("Stems")
-        menu = QMenu(self)
-        show_action = menu.addAction("Show Panel")
-        show_action.triggered.connect(self.showNormal)
-        scan_action = menu.addAction("Scan Current Set")
-        scan_action.triggered.connect(self.scan_current_set)
-        preferences_action = menu.addAction("Preferences")
-        preferences_action.triggered.connect(self.show_preferences)
-        menu.addSeparator()
-        quit_action = menu.addAction("Quit")
-        quit_action.triggered.connect(self.close)
-        self.tray_icon.setContextMenu(menu)
-        self.tray_icon.activated.connect(self._toggle_from_tray)
-        self.tray_icon.show()
-
-    def _toggle_from_tray(self, reason) -> None:
-        if reason != QSystemTrayIcon.Trigger:
-            return
-        if self.isVisible():
-            self.hide()
-        else:
-            self.showNormal()
-            self.activateWindow()
+    def _set_snapshot(self):
+        if self.project is None:
+            return None
+        return (self.project.project_folder, self.project.song_name,
+                tuple((track.index, track.name) for track in self.state.detected_tracks))
 
     def scan_current_set(self) -> None:
-        if self.scan_thread is not None:
+        if self.scan_thread is not None or self.export_thread is not None or self._closing:
             return
-        self.scan_button.setEnabled(False)
+        self._last_scan = time.monotonic()
+        self._scan_snapshot = self._set_snapshot()
+        self._scan_selection = {(t.index, t.name) for t in self._selected_tracks()}
+        self._readiness_ok = False
+        self.retry_button.hide()
+        self._arrange_action_buttons(self.width() < COMPACT_LAYOUT_BREAKPOINT)
+        self.retry_button.setEnabled(False)
         self._set_export_enabled(False)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
@@ -739,12 +693,21 @@ class MainWindow(QMainWindow):
 
     def _handle_scan_success(self, state, project) -> None:
         self.state = state
+        previous_project = self.project
         self.project = project
+        self._readiness_ok = True
+        changed = self._scan_snapshot is not None and self._scan_snapshot != self._set_snapshot()
+        if previous_project and (previous_project.project_folder, previous_project.song_name) != (project.project_folder, project.song_name):
+            self.project_name_input.clear()
+            self.key_input.clear()
         self.song_value.setText(project.song_name)
         self.project_name_input.setPlaceholderText(project.song_name)
         self.bpm_value.setText(f"{project.bpm} BPM" if project.bpm is not None else "BPM unknown")
-        self._set_project_path(str(project.project_folder))
         self._populate_tracks(state.detected_tracks)
+        if self._scan_snapshot is not None and not changed:
+            for track in state.detected_tracks:
+                row = self.track_list.itemWidget(self.item_by_track_name[track.name])
+                row.checkbox.setChecked((track.index, track.name) in self._scan_selection)
         self.update_destination_preview()
         count = len(state.detected_tracks)
         self.progress_bar.setRange(0, 1)
@@ -752,7 +715,12 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Scan complete")
         self._set_progress_detail(f"Detected {count} stem{'s' if count != 1 else ''}")
         self._set_progress_state("idle")
-        self._set_export_enabled(count > 0)
+        self._set_export_enabled(bool(self._selected_tracks()))
+        if self._pending_export and changed:
+            self._pending_export = False
+            self._set_progress_state("scan-changed")
+            self.progress_label.setText("Ableton set changed")
+            self._set_progress_detail("The set or its tracks changed. Review the updated stems, then click Export Stems.")
         self._set_open_available(self.current_job is not None or self.project is not None)
 
     def _handle_scan_failure(self, message: str) -> None:
@@ -761,9 +729,11 @@ class MainWindow(QMainWindow):
         self._set_progress_state("scan-failed")
         self.progress_label.setText("Scan failed")
         self._set_progress_detail(message)
-        if not self._startup_scan:
-            QMessageBox.warning(self, "Scan failed", message)
-        self._startup_scan = False
+        self._readiness_ok = False
+        self._pending_export = False
+        self._set_export_enabled(False)
+        self.retry_button.show()
+        self._arrange_action_buttons(self.width() < COMPACT_LAYOUT_BREAKPOINT)
 
     def _cleanup_scan_thread(self, *_args) -> None:
         if self.scan_thread is not None:
@@ -771,12 +741,18 @@ class MainWindow(QMainWindow):
             self.scan_thread.wait()
         self.scan_thread = None
         self.scan_worker = None
-        self.scan_button.setEnabled(True)
+        if self._closing:
+            QTimer.singleShot(0, self.close)
+        self.retry_button.setEnabled(True)
+        self.update_destination_preview()
+        if self._pending_export and not self._closing:
+            self._pending_export = False
+            self.start_export()
 
     def _populate_tracks(self, tracks: list[StemTrack]) -> None:
         self.track_list.setVisible(bool(tracks))
         self.empty_stems_label.setVisible(not tracks)
-        self.empty_stems_label.setText("No stem buses found.\nUse ALL-CAPS bus names in Ableton, then scan again.")
+        self.empty_stems_label.setText("No stems found.\nName the groups you want exported in ALL CAPS, then return here.")
         self.track_list.clear()
         self.item_by_track_name.clear()
         self.status_by_track_name.clear()
@@ -828,7 +804,7 @@ class MainWindow(QMainWindow):
         tracks = self._selected_tracks()
         custom_song_name = self.project_name_input.text().strip() or None
         key = self.key_input.text().strip() or None
-        replace_mode = self.replace_mode.currentData()
+        replace_mode = "replace"
         job = self.state.build_export_job(
             key=key,
             replace_mode=replace_mode,
@@ -838,44 +814,29 @@ class MainWindow(QMainWindow):
             folder_name_format=self.preferences.folder_name_format,
         )
         self.current_job = replace(job, tracks=tracks)
-        self.destination_value.setText(self.current_job.stems_dir.name or "-")
+        self.destination_value.setText(f'<a href="open" style="color: #aab2be">{html.escape(str(self.current_job.stems_dir))}</a>')
         self.destination_value.setToolTip(str(self.current_job.stems_dir))
-        self._set_export_enabled(bool(self.current_job.selected_tracks))
+        self._set_export_enabled(self._readiness_ok and self.scan_thread is None and self.export_thread is None and bool(self.current_job.selected_tracks))
         self._set_open_available(True)
 
     def show_preferences(self) -> None:
         dialog = PreferencesDialog(self.preferences, self)
         dialog.preferences_changed.connect(self._save_preferences_from_dialog)
-        dialog.open_export_folder_requested.connect(self.open_export_folder)
         dialog.exec()
-        if self.preferences.menubar_mode:
-            self.hide()
-        else:
-            self.showNormal()
 
     def _save_preferences_from_dialog(self, updated: Preferences) -> None:
-        launch_setting_changed = updated.launch_at_login != self.preferences.launch_at_login
         self.preferences = updated
-        if launch_setting_changed:
-            if self.preferences.launch_at_login:
-                install_launch_agent(Path(__file__).resolve().parents[2] / "run_ui.py")
-            else:
-                remove_launch_agent()
         self.preferences_store.save(self.preferences)
-        self._apply_preferences_to_ui()
+        self.update_destination_preview()
 
     def confirm_export(self) -> None:
-        self.update_destination_preview()
-        if self.current_job is None or not self.current_job.selected_tracks:
-            QMessageBox.information(self, "No stems selected", "Select at least one stem to export.")
+        if self.scan_thread is not None or self.export_thread is not None:
             return
-
-        confirm = ExportConfirmationDialog(self.current_job, self, scale=self.ui_scale)
-        if confirm.exec() == QDialog.Accepted:
-            self.start_export()
+        self._pending_export = True
+        self.scan_current_set()
 
     def start_export(self) -> None:
-        if self.current_job is None or self.export_thread is not None:
+        if self.current_job is None or not self.current_job.selected_tracks or self.export_thread is not None:
             return
 
         self.export_cancel_requested = False
@@ -884,9 +845,13 @@ class MainWindow(QMainWindow):
         self._set_progress_state("export-starting")
         self.progress_label.setText("Preparing export")
         self._set_export_progress_detail(completed=0)
-        self.scan_button.setEnabled(False)
+        self.retry_button.setEnabled(False)
         self._set_export_enabled(False)
         self._set_cancel_available(True)
+        self.project_name_input.setEnabled(False)
+        self.key_input.setEnabled(False)
+        self.track_list.setEnabled(False)
+        self.preferences_button.setEnabled(False)
 
         self.export_thread = QThread(self)
         self.export_worker = ExportWorker(self.state, self.current_job)
@@ -972,7 +937,8 @@ class MainWindow(QMainWindow):
         completed_count = self.progress_bar.value() if completed is None else completed
         stem_word = "stem" if total == 1 else "stems"
         self._set_progress_detail(
-            f"{completed_count} of {total} {stem_word} · Saving to {self.current_job.stems_dir}"
+            f"{completed_count} of {total} {stem_word} · Saving to {self.current_job.stems_dir}\n"
+            "Keep the keyboard and mouse free. Move the pointer to a screen corner to stop."
         )
 
     def _refresh_progress_percent(self, *_args) -> None:
@@ -1004,20 +970,6 @@ class MainWindow(QMainWindow):
             self.progress_label.setText("Export complete")
         self._set_progress_detail(summary)
         self._set_open_available(True)
-        full_summary = build_export_summary(result)
-        self.preferences = append_recent_export(
-            self.preferences,
-            RecentExport(
-                song_name=result.job.song_name,
-                stems_dir=str(result.job.stems_dir),
-                exported_count=result.success_count,
-                failed_count=result.failure_count,
-                summary=full_summary,
-            ),
-        )
-        self.preferences_store.save(self.preferences)
-        if self.preferences.copy_summary_to_clipboard:
-            self.copy_summary(notify=False)
         if self.preferences.auto_open_folder:
             self.open_export_folder()
 
@@ -1033,21 +985,15 @@ class MainWindow(QMainWindow):
             self.export_thread.wait()
         self.export_thread = None
         self.export_worker = None
-        self.scan_button.setEnabled(True)
+        if self._closing:
+            QTimer.singleShot(0, self.close)
+        self.retry_button.setEnabled(True)
         self._set_cancel_available(False)
+        self.project_name_input.setEnabled(True)
+        self.key_input.setEnabled(True)
+        self.track_list.setEnabled(True)
+        self.preferences_button.setEnabled(True)
         self.update_destination_preview()
-
-    def copy_summary(self, *, notify: bool = True) -> None:
-        if self.current_result is None:
-            return
-        summary = build_export_summary(self.current_result)
-        clipboard = self.window().windowHandle().screen().context().clipboard() if False else None
-        del clipboard
-        from PySide6.QtGui import QGuiApplication
-
-        QGuiApplication.clipboard().setText(summary)
-        if notify:
-            self.summary_label.setText("Export summary copied to clipboard.")
 
     def cancel_export(self) -> None:
         if self.export_worker is None:
@@ -1058,30 +1004,29 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Cancelling after current stem")
         self._set_export_progress_detail()
 
-    def open_export_folder(self) -> None:
+    def open_export_folder(self, *_args) -> None:
         if self.current_job is not None:
             path = self.current_job.stems_dir
-        elif self.preferences.recent_exports:
-            path = Path(self.preferences.recent_exports[0].stems_dir)
-        elif (self.preferences.export_destination_root or "").strip():
-            path = Path(self.preferences.export_destination_root)
         elif self.project is not None:
             path = self.project.project_folder
         else:
             return
+        while not path.exists() and path != path.parent:
+            path = path.parent
         subprocess.run(["open", str(path)], check=False)
 
     def closeEvent(self, event) -> None:
-        if self.preferences.sticky_panel_position:
-            self.preferences.panel_x = self.x()
-            self.preferences.panel_y = self.y()
+        if self.export_thread is not None or self.scan_thread is not None:
+            event.ignore()
+            if self.export_thread is not None:
+                self.cancel_export()
+            self._closing = True
+            return
+        self._closing = True
+        self.preferences.panel_x = self.x()
+        self.preferences.panel_y = self.y()
         self.preferences.panel_width = self.width()
         self.preferences.panel_height = self.height()
-        self.preferences.launch_at_login = is_launch_agent_installed()
         self.preferences_store.save(self.preferences)
-        if self.preferences.menubar_mode and self.tray_icon is not None and self.tray_icon.isVisible():
-            event.ignore()
-            self.hide()
-            return
         self.gateway.stop_listener()
         super().closeEvent(event)

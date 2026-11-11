@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from ..automation import find_ableton_app_path, osascript
+from ..preflight import check_ableton_running, run_export_preflight
+from ..errors import AbletonConnectionError, ProjectDetectionError
 from ..export import ExportAutomation, execute_export_job
 from ..models import ExportJob
 from ..state import AppState
@@ -20,7 +23,25 @@ class ScanWorker(QObject):
 
     def run(self) -> None:
         try:
-            project, tracks = self.state.scan_current_set()
+            check_ableton_running(find_ableton_app_path)
+            try:
+                project, tracks = self.state.scan_current_set()
+            except AbletonConnectionError as exc:
+                raise AbletonConnectionError(
+                    "Ableton isn't connected. In Live > Settings > Link, Tempo & MIDI, "
+                    "select AbletonOSC as a Control Surface, then click Try Again."
+                ) from exc
+            except ProjectDetectionError as exc:
+                raise ProjectDetectionError(
+                    f"Save your Ableton set, bring its window to the front, then click Try Again. {exc}"
+                ) from exc
+            run_export_preflight(
+                ableton_client=self.state.ableton_client,
+                project_folder=project.project_folder,
+                song_name=project.song_name,
+                app_path_finder=find_ableton_app_path,
+                script_runner=osascript,
+            )
         except Exception as exc:
             self.failed.emit(str(exc))
             return
