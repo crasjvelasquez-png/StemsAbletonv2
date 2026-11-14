@@ -31,9 +31,16 @@ Failure modes considered before implementation:
 10. Ruler scale exceeding 200 bars:
     Ruler total must be max(200, end_bar) rounded up to a multiple of 8 (e.g. bar 230 -> 232).
 11. MainWindow banner label, confirm dialog text, and state fakes:
-    Banner label must read "Will export", confirm_export() must show "Will export: Bars X to Y",
+    Banner label must read "Range Selected", confirm_export() must open ExportConfirmDialog
+    with non-verbose title ("Export N stems?") and concise range ("Bars X to Y · N bars"),
     and UI must tolerate fakes lacking `export_range`, default to "Bars 1 to 200" when None,
     and reset stale range on scan failure.
+12. ExportConfirmDialog verbosity, long paths, and conflict modes:
+    - Range must not be repeated in both the dialog title and body.
+    - Destination must show only the target folder name (with full path in tooltip) so long
+      external volume paths do not wrap awkwardly across 4 lines.
+    - Conflict notice must stay hidden when no conflicts exist, and show concise status or
+      explicit action buttons ("Keep both", "Skip", "Replace") when conflicts exist.
 """
 
 from __future__ import annotations
@@ -388,24 +395,28 @@ def test_main_window_displays_range_banner_handles_failure_and_confirms_range(qt
         assert window.export_range_ruler.end_bar == 48
         assert window.export_range_ruler.total_bars == 200
 
-        # confirm_export must include the range headline and "Will export:" in the dialog text
-        seen_texts: list[str] = []
+        # confirm_export opens ExportConfirmDialog with non-verbose title, range, and folder name
+        seen_dialogs: list[object] = []
         scan_called = []
         monkeypatch.setattr(window, "scan_current_set", lambda: scan_called.append(True))
 
         def fake_exec(self):
-            seen_texts.append(f"{self.text()}\n{self.informativeText()}")
-            for button in self.buttons():
-                if self.buttonRole(button) == QMessageBox.RejectRole:
-                    button.click()
-                    break
-            return 0
+            seen_dialogs.append(self)
+            self.cancel_button.click()
+            return self.result()
 
-        monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+        monkeypatch.setattr(main_window_module.ExportConfirmDialog, "exec", fake_exec)
         window.confirm_export()
-        assert len(seen_texts) == 1
-        assert "Bars 17 to 48" in seen_texts[0]
-        assert "Will export: Bars 17 to 48" in seen_texts[0]
+        assert len(seen_dialogs) == 1
+        dialog = seen_dialogs[0]
+        assert dialog.title_label.text() == "Export 2 stems?"
+        assert "Bars 17 to 48" not in dialog.title_label.text()
+        assert dialog.range_value.text() == "Bars 17 to 48 · 32 bars · 1:04"
+        assert window.current_job.stems_dir.name.replace(" ", "&nbsp;") in dialog.folder_value.text()
+        assert "\U0001F4C1" in dialog.folder_value.text()
+        assert "/" not in dialog.folder_value.text().replace("</span>", "").replace("<span", "")
+        assert dialog.folder_value.toolTip() == str(window.current_job.stems_dir)
+        assert dialog.conflict_label.isHidden() is True
         assert scan_called == []
 
         # All tracks empty -> export_range is None -> falls back to default 1..200
@@ -456,11 +467,12 @@ def test_main_window_displays_range_banner_handles_failure_and_confirms_range(qt
         assert window.export_range_ruler.end_bar == 200
         assert window.export_range_ruler.total_bars == 200
 
-        seen_texts.clear()
+        seen_dialogs.clear()
         window.state = no_range_state
         window.confirm_export()
-        assert len(seen_texts) == 1
-        assert "Will export: Bars 1 to 200" in seen_texts[0]
+        assert len(seen_dialogs) == 1
+        assert seen_dialogs[0].title_label.text() == "Export 1 stem?"
+        assert seen_dialogs[0].range_value.text() == "Bars 1 to 200 · 200 bars"
 
         # Scan failure resets banner to default Bars 1 to 200
         window._handle_scan_success(long_state, long_state.project)
@@ -472,3 +484,156 @@ def test_main_window_displays_range_banner_handles_failure_and_confirms_range(qt
         assert window.export_range_ruler.total_bars == 200
     finally:
         window.close()
+
+
+def test_export_confirm_dialog_conflict_modes_and_artifact_e2e(tmp_path, monkeypatch):
+    """Verify ExportConfirmDialog aesthetic, simplified copy, and conflict resolution modes E2E."""
+    import json
+
+    qt_app = QApplication.instance() or QApplication([])
+
+    class DummyGateway:
+        def start_listener(self) -> None:
+            pass
+
+        def stop_listener(self) -> None:
+            pass
+
+    class DummyPreferencesStore:
+        def load(self) -> Preferences:
+            return Preferences()
+
+        def save(self, _preferences: Preferences) -> None:
+            pass
+
+    monkeypatch.setattr(main_window_module, "PreferencesStore", DummyPreferencesStore)
+    monkeypatch.setattr(main_window_module, "OSCGateway", DummyGateway)
+    monkeypatch.setattr(main_window_module, "AbletonClient", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(main_window_module.QTimer, "singleShot", staticmethod(lambda *_args, **_kwargs: None))
+    monkeypatch.setattr(main_window_module, "is_launch_agent_installed", lambda: False)
+
+    window = main_window_module.MainWindow()
+    try:
+        state = _make_state(
+            {
+                "/live/song/get/tempo": [93.0],
+                "/live/song/get/signature_numerator": [4],
+                "/live/song/get/signature_denominator": [4],
+            },
+            tmp_path,
+            clips={
+                0: [(28.0, 256.0)],
+                1: [(28.0, 256.0)],
+            },
+            tracks={0: "DRUMS", 1: "BASS"},
+        )
+        project, _ = state.scan_current_set()
+        window._handle_scan_success(state, project)
+        window.update_destination_preview()
+        qt_app.processEvents()
+
+        scans: list[bool] = []
+        monkeypatch.setattr(window, "scan_current_set", lambda: scans.append(True))
+
+        report: dict[str, object] = {}
+
+        # 1. Clean export (no conflicts) -> simple card with Range + Folder, no conflict notice
+        captured: list[object] = []
+
+        def accept_clean(self):
+            captured.append(
+                {
+                    "title": self.title_label.text(),
+                    "range": self.range_value.text(),
+                    "folder": self.folder_value.text(),
+                    "folder_tooltip_has_parent": str(tmp_path) in self.folder_value.toolTip(),
+                    "conflict_hidden": self.conflict_label.isHidden(),
+                    "buttons": [b.text() for b in self.action_buttons],
+                    "card_name": self.summary_card.objectName(),
+                    "footer_name": self.footer.objectName(),
+                }
+            )
+            self.default_action_button.click()
+            return self.result()
+
+        monkeypatch.setattr(main_window_module.ExportConfirmDialog, "exec", accept_clean)
+        window.confirm_export()
+        assert len(captured) == 1
+        assert captured[0]["title"] == "Export 2 stems?"
+        assert captured[0]["range"] == "Bars 8 to 71 · 64 bars · 2:45"
+        assert window.current_job.stems_dir.name.replace(" ", "&nbsp;") in captured[0]["folder"]
+        assert captured[0]["folder_tooltip_has_parent"] is True
+        assert captured[0]["conflict_hidden"] is True
+        assert captured[0]["buttons"] == ["Cancel", "Export"]
+        assert window._chosen_replace_mode == "replace"
+        assert window._pending_export is True
+        assert len(scans) == 1
+        report["clean_export"] = captured[0]
+
+        # 2. Conflicts exist with mode == "ask" -> shows conflict note + Keep both / Skip / Replace
+        window._pending_export = False
+        stems_dir = window.current_job.stems_dir
+        stems_dir.mkdir(parents=True, exist_ok=True)
+        from stems.export import planned_stem_paths
+
+        existing_stem = planned_stem_paths(window.current_job)[0][1].with_suffix(".wav")
+        existing_stem.write_bytes(b"RIFF")
+
+        window.preferences.replace_mode = "ask"
+        captured_ask: list[object] = []
+
+        def choose_keep_both(self):
+            captured_ask.append(
+                {
+                    "title": self.title_label.text(),
+                    "conflict": self.conflict_label.text(),
+                    "conflict_hidden": self.conflict_label.isHidden(),
+                    "buttons": [b.text() for b in self.action_buttons],
+                    "default_button": self.default_action_button.text(),
+                }
+            )
+            for btn in self.action_buttons:
+                if btn.text() == "Keep both":
+                    btn.click()
+                    break
+            return self.result()
+
+        monkeypatch.setattr(main_window_module.ExportConfirmDialog, "exec", choose_keep_both)
+        window.confirm_export()
+        assert len(captured_ask) == 1
+        assert captured_ask[0]["conflict_hidden"] is False
+        assert captured_ask[0]["conflict"] == "1 of 2 already exist"
+        assert captured_ask[0]["buttons"] == ["Cancel", "Keep both", "Skip", "Replace"]
+        assert captured_ask[0]["default_button"] == "Replace"
+        assert window._chosen_replace_mode == "keep_both"
+        report["conflict_ask_mode"] = captured_ask[0]
+
+        # 3. Conflicts exist with preset mode (e.g. "keep") -> concise note + Cancel / Export
+        window._pending_export = False
+        window.preferences.replace_mode = "keep"
+        captured_preset: list[object] = []
+
+        def accept_preset(self):
+            captured_preset.append(
+                {
+                    "conflict": self.conflict_label.text(),
+                    "buttons": [b.text() for b in self.action_buttons],
+                }
+            )
+            self.default_action_button.click()
+            return self.result()
+
+        monkeypatch.setattr(main_window_module.ExportConfirmDialog, "exec", accept_preset)
+        window.confirm_export()
+        assert captured_preset[0]["conflict"] == "1 of 2 already exist · will be skipped"
+        assert captured_preset[0]["buttons"] == ["Cancel", "Export"]
+        assert window._chosen_replace_mode == "keep"
+        report["conflict_preset_keep"] = captured_preset[0]
+
+        artifact_path = Path(__file__).parent / "artifacts" / "export_confirm_dialog.json"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(json.dumps(report, indent=2) + "\n")
+        assert artifact_path.exists()
+    finally:
+        window.close()
+

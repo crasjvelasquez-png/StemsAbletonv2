@@ -8,7 +8,7 @@ def test_is_stem_candidate_accepts_all_caps_bus_names():
 
 
 def test_is_stem_candidate_rejects_excluded_or_short_names():
-    assert not is_stem_candidate("MASTER")
+    assert is_stem_candidate("MASTER")
     assert not is_stem_candidate("A")
     assert not is_stem_candidate("lead")
 

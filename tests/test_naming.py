@@ -4,8 +4,9 @@ from stems.naming import (
 )
 
 
-def test_validate_stem_format_requires_wav_and_unique_token():
-    assert validate_name_format("{song}_{track}", "stem") == "Stem file formats must end in .wav."
+def test_validate_stem_format_requires_unique_token_and_any_extension():
+    assert validate_name_format("{song}_{track}", "stem") is None
+    assert validate_name_format("{song}_{track}.mp3", "stem") is None
     assert validate_name_format("{song}.wav", "stem") == "Add {track} or {index} so each stem gets a unique name."
     assert validate_name_format("{song}_{track}.wav", "stem") is None
 

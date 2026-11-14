@@ -8,6 +8,7 @@ from .preferences import DEFAULT_FOLDER_NAME_FORMAT, DEFAULT_STEM_NAME_FORMAT
 
 
 NEW_STEMS_PATTERN = re.compile(r".+ - [A-Za-z]+ \d{1,2} \d{4} - Stems - .+", re.IGNORECASE)
+AUDIO_EXTENSIONS = (".wav", ".aif", ".aiff", ".flac", ".mp3", ".ogg")
 TOKEN_PATTERN = re.compile(r"\{([^{}]+)\}")
 STEM_NAME_TOKENS = ("song", "track", "artist", "bpm", "key", "date", "index")
 FOLDER_NAME_TOKENS = ("song", "artist", "bpm", "key", "date")
@@ -34,8 +35,8 @@ def render_name(format_string: str, **tokens: object) -> str:
 def _tidy(text: str) -> str:
     """Clean up gaps left by empty tokens (double spaces, dangling dashes)."""
     stem, dot, ext = text.rpartition(".")
-    if dot and ext.lower() == "wav":
-        return _tidy(stem) + ".wav"
+    if dot and "." + ext.lower() in AUDIO_EXTENSIONS:
+        return _tidy(stem) + "." + ext
     text = re.sub(r"\s{2,}", " ", text)
     text = re.sub(r"(?:\s-\s?){2,}", " - ", text)
     text = re.sub(r"^[\s\-_]+|[\s\-_]+$", "", text)
@@ -58,8 +59,6 @@ def validate_name_format(format_string: str, kind: Literal["stem", "folder"]) ->
     if "{" in stripped or "}" in stripped:
         return "Fix the unmatched token brace."
     if kind == "stem":
-        if not value.lower().endswith(".wav"):
-            return "Stem file formats must end in .wav."
         if "{track}" not in value and "{index}" not in value:
             return "Add {track} or {index} so each stem gets a unique name."
     return None

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import threading
 import time
 from pathlib import Path
 
 from .errors import ProjectDetectionError
-from .naming import stems_folder_name
+from .naming import render_name, stems_folder_name
+from .preferences import DEFAULT_FOLDER_NAME_FORMAT
 
 
 logger = logging.getLogger("stems")
@@ -224,4 +226,58 @@ def stems_folder_path(
     artist: str | None = None,
 ) -> Path:
     folder_name = stems_folder_name(song_name, key, bpm, format_string=format_string, artist=artist)
-    return project_folder / folder_name
+    desired = project_folder / folder_name
+    if desired.is_dir():
+        return desired
+    existing = find_existing_stems_folder(project_folder, song_name, key, bpm, format_string, artist)
+    return existing or desired
+
+
+def find_existing_stems_folder(
+    project_folder: Path,
+    song_name: str,
+    key: str | None = None,
+    bpm: int | float | None = None,
+    format_string: str | None = None,
+    artist: str | None = None,
+) -> Path | None:
+    """Reuse a stems folder already inside the project folder.
+
+    Order: same naming format from another day, then any folder with both the
+    song name and "stem" in its name, then a plain "Stems" folder.
+    """
+    try:
+        folders = [
+            entry for entry in project_folder.iterdir()
+            if entry.is_dir() and not entry.name.startswith(".")
+            and "stem" in entry.name.casefold()
+        ]
+    except OSError:
+        return None
+    if not folders:
+        return None
+
+    marker = "\x00DATE\x00"
+    template = render_name(
+        format_string or DEFAULT_FOLDER_NAME_FORMAT,
+        song=song_name,
+        artist=artist or "",
+        key=key or "",
+        bpm=str(bpm) if bpm is not None else "Unknown BPM",
+        date=marker,
+    )
+    pattern = re.compile(
+        "^" + re.escape(template).replace(re.escape(marker), ".+") + "$", re.IGNORECASE
+    )
+    song = song_name.casefold()
+
+    def newest(candidates: list[Path]) -> Path | None:
+        if not candidates:
+            return None
+        return max(candidates, key=lambda path: path.stat().st_mtime)
+
+    return (
+        newest([f for f in folders if pattern.match(f.name)])
+        or newest([f for f in folders if song and song in f.name.casefold()])
+        or newest([f for f in folders if f.name.casefold() in {"stems", "stem"}])
+    )

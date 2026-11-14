@@ -16,14 +16,15 @@ class NamingPreset:
     format_string: str
 
 
-DEFAULT_STEM_NAME_FORMAT = "{song}_{track} - {key} {bpm} BPM.wav"
+DEFAULT_STEM_NAME_FORMAT = "{song}_{track} - {key} {bpm} BPM"
+REPLACE_MODES = ("ask", "replace", "keep", "keep_both")
 DEFAULT_FOLDER_NAME_FORMAT = "{song} - {date} - Stems - {key} {bpm} BPM"
 
 BUILTIN_STEM_NAMING_PRESETS = (
     NamingPreset("builtin-stem-studio-detail", "Studio Detail", DEFAULT_STEM_NAME_FORMAT),
-    NamingPreset("builtin-stem-compact", "Compact", "{song}_{track}.wav"),
-    NamingPreset("builtin-stem-numbered", "Numbered", "{index}_{track}_{song}.wav"),
-    NamingPreset("builtin-stem-artist", "Artist first", "{artist} - {song} - {track}.wav"),
+    NamingPreset("builtin-stem-compact", "Compact", "{song}_{track}"),
+    NamingPreset("builtin-stem-numbered", "Numbered", "{index}_{track}_{song}"),
+    NamingPreset("builtin-stem-artist", "Artist first", "{artist} - {song} - {track}"),
 )
 
 BUILTIN_FOLDER_NAMING_PRESETS = (
@@ -43,6 +44,8 @@ class Preferences:
     panel_height: int | None = None
     stem_name_format: str = DEFAULT_STEM_NAME_FORMAT
     folder_name_format: str = DEFAULT_FOLDER_NAME_FORMAT
+    # What to do when a stem file already exists: ask, replace, keep (skip), keep_both.
+    replace_mode: str = "ask"
 
 
 class PreferencesStore:
@@ -55,7 +58,14 @@ class PreferencesStore:
         data = json.loads(self.path.read_text())
         # Ignore retired settings, including clipboard, destination and history.
         data = {key: value for key, value in data.items() if key in Preferences.__dataclass_fields__}
-        from .naming import validate_name_format
+        from .naming import AUDIO_EXTENSIONS, validate_name_format
+
+        if data.get("replace_mode") not in REPLACE_MODES:
+            data["replace_mode"] = "ask"
+        # Ableton chooses the file type, so formats no longer carry an extension.
+        stem_format = data.get("stem_name_format")
+        if isinstance(stem_format, str) and stem_format.lower().endswith(AUDIO_EXTENSIONS):
+            data["stem_name_format"] = stem_format.rsplit(".", 1)[0]
 
         for key, kind, presets in (("stem_name_format", "stem", BUILTIN_STEM_NAMING_PRESETS),
                                    ("folder_name_format", "folder", BUILTIN_FOLDER_NAMING_PRESETS)):

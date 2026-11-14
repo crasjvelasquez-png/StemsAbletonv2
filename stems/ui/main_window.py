@@ -11,6 +11,7 @@ from pathlib import Path
 from ..ableton import AbletonClient
 from ..models import DEFAULT_RANGE_BARS, ExportJob, ExportRange, ExportResult, StemTrack
 from ..osc import OSCGateway
+from ..export import find_conflicts, short_failure_reason
 from ..preferences import Preferences, PreferencesStore
 from ..state import AppState
 
@@ -33,6 +34,7 @@ try:
         QAbstractItemView,
         QApplication,
         QCheckBox,
+        QDialog,
         QFrame,
         QGridLayout,
         QHBoxLayout,
@@ -161,6 +163,24 @@ def _relative_luminance(color: QColor) -> float:
     )
 
 
+
+def folder_breadcrumb_html(path, *, color: str = "#a1a1a6") -> str:
+    """Friendly folder trail: 📁 Folder → 📁 Folder, no slashes."""
+    from pathlib import Path as _P
+
+    p = _P(path)
+    parts = [x for x in p.parts if x not in ("/", "")]
+    home = _P.home().parts
+    if len(parts) >= len(home) - 1 and tuple(parts[: len(home) - 1]) == tuple(home[1:]):
+        parts = ["Home"] + parts[len(home) - 1 :]
+    elif parts and parts[0] == "Volumes":
+        parts = parts[1:]
+    if not parts:
+        parts = [str(path)]
+    sep = f' <span style="color: #6e6e73">&rarr;</span> '
+    items = sep.join(f"\U0001F4C1&nbsp;{html.escape(x).replace(' ', '&nbsp;')}" for x in parts)
+    return f'<span style="color: {color}">{items}</span>'
+
 class StemTrackRow(QWidget):
     def __init__(
         self,
@@ -191,6 +211,10 @@ class StemTrackRow(QWidget):
         self._lane_height = int(sizes["stem_lane_height"])
         self._lane_gap = int(sizes["stem_lane_gap"])
         self._tab_width = int(sizes["stem_tab_width"])
+        self._hatch_phase = 0.0
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(33)
+        self._anim_timer.timeout.connect(self._advance_animation)
 
         self.checkbox = QCheckBox(self)
         self.checkbox.setObjectName("stemRowCheckbox")
@@ -227,6 +251,24 @@ class StemTrackRow(QWidget):
 
     def _on_checkbox_toggled(self, _checked: bool) -> None:
         self.update()
+
+    def set_animating(self, active: bool) -> None:
+        if active:
+            if not self._anim_timer.isActive():
+                self._anim_timer.start()
+        else:
+            if self._anim_timer.isActive():
+                self._anim_timer.stop()
+            self._hatch_phase = 0.0
+        self.update()
+
+    def _advance_animation(self) -> None:
+        self._hatch_phase = (self._hatch_phase + 0.8) % 20.0
+        self.update()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        self._anim_timer.stop()
+        super().hideEvent(event)
 
     def enterEvent(self, event) -> None:  # noqa: N802 - Qt override name
         self._hovered = event.position().y() <= self._lane_height
@@ -293,16 +335,20 @@ class StemTrackRow(QWidget):
         else:
             bg = QColor(DESIGN_TOKENS["panel_hover"] if (self._hovered and self.isEnabled()) else DESIGN_TOKENS["panel"])
             painter.fillRect(lane_rect, bg)
-            if status == "exporting":
+            if status in {"exporting", "retrying"}:
                 painter.save()
                 painter.setPen(Qt.NoPen)
                 hatch = QColor(self._clip_color)
-                hatch.setAlphaF(0.55 if very_dark_clip else 0.30)
+                base_alpha = 0.55 if very_dark_clip else 0.30
+                pulse = 0.75 + 0.25 * math.sin(2.0 * math.pi * time.monotonic() / 1.6)
+                hatch.setAlphaF(base_alpha * pulse)
                 painter.setBrush(hatch)
                 painter.rotate(-45)
                 diag = int(lane_w + lane_h) + 40
                 for x in range(-diag, diag, 20):
-                    painter.drawRect(QRectF(float(x), float(-diag), 10.0, float(diag * 2)))
+                    painter.drawRect(
+                        QRectF(float(x) + self._hatch_phase, float(-diag), 10.0, float(diag * 2))
+                    )
                 painter.restore()
 
         # Left tab
@@ -454,6 +500,162 @@ class RangeRuler(QWidget):
         painter.end()
 
 
+class ExportConfirmDialog(QDialog):
+    def __init__(
+        self,
+        job: ExportJob,
+        range_headline: str,
+        range_detail: str,
+        conflict_count: int,
+        replace_mode: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Confirm Export")
+        self.setModal(True)
+        self.setFixedWidth(440)
+        self.setStyleSheet(stylesheet_for_scale(1.0))
+        self.chosen_mode: str | None = None
+
+        track_count = len(job.selected_tracks)
+        stem_word = "stem" if track_count == 1 else "stems"
+        stems_dir = Path(job.stems_dir)
+
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        content = QWidget()
+        content.setObjectName("exportConfirmContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(24, 20, 24, 20)
+        content_layout.setSpacing(14)
+
+        self.title_label = QLabel(f"Export {track_count} {stem_word}?")
+        self.title_label.setObjectName("dialogTitle")
+        content_layout.addWidget(self.title_label)
+
+        self.summary_card = QWidget()
+        self.summary_card.setObjectName("exportConfirmCard")
+        self.summary_card.setAttribute(Qt.WA_StyledBackground, True)
+        card_layout = QVBoxLayout(self.summary_card)
+        card_layout.setContentsMargins(14, 12, 14, 12)
+        card_layout.setSpacing(10)
+
+        range_row = QHBoxLayout()
+        range_row.setContentsMargins(0, 0, 0, 0)
+        range_row.setSpacing(12)
+        self.range_label = QLabel("Range")
+        self.range_label.setObjectName("exportConfirmLabel")
+        self.range_label.setFixedWidth(52)
+        range_text = f"{range_headline} · {range_detail}" if range_detail else range_headline
+        self.range_value = QLabel(range_text)
+        self.range_value.setObjectName("exportConfirmValue")
+        self.range_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        range_row.addWidget(self.range_label)
+        range_row.addWidget(self.range_value, 1)
+        card_layout.addLayout(range_row)
+
+        separator = QFrame()
+        separator.setObjectName("exportConfirmSeparator")
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Plain)
+        separator.setFixedHeight(1)
+        card_layout.addWidget(separator)
+
+        folder_row = QHBoxLayout()
+        folder_row.setContentsMargins(0, 0, 0, 0)
+        folder_row.setSpacing(12)
+        self.folder_label = QLabel("Folder")
+        self.folder_label.setObjectName("exportConfirmLabel")
+        self.folder_label.setFixedWidth(52)
+        self.folder_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.folder_value = QLabel(folder_breadcrumb_html(stems_dir, color="#f5f5f7"))
+        self.folder_value.setTextFormat(Qt.RichText)
+        self.folder_value.setObjectName("exportConfirmValue")
+        self.folder_value.setWordWrap(True)
+        self.folder_value.setToolTip(str(stems_dir))
+        self.folder_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.folder_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        folder_row.addWidget(self.folder_label)
+        folder_row.addWidget(self.folder_value, 1)
+        card_layout.addLayout(folder_row)
+
+        content_layout.addWidget(self.summary_card)
+
+        self.conflict_label = QLabel("")
+        self.conflict_label.setObjectName("exportConfirmConflict")
+        self.conflict_label.setWordWrap(True)
+        if conflict_count > 0:
+            mode_suffix = {
+                "replace": " · will be replaced",
+                "keep": " · will be skipped",
+                "keep_both": " · will keep both",
+            }.get(replace_mode, "")
+            self.conflict_label.setText(f"{conflict_count} of {track_count} already exist{mode_suffix}")
+        else:
+            self.conflict_label.hide()
+        content_layout.addWidget(self.conflict_label)
+
+        root_layout.addWidget(content, 1)
+
+        self.footer = QWidget()
+        self.footer.setObjectName("footerDock")
+        self.footer.setAttribute(Qt.WA_StyledBackground, True)
+        footer_layout = QHBoxLayout(self.footer)
+        footer_layout.setContentsMargins(24, 14, 24, 14)
+        footer_layout.setSpacing(8)
+
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setObjectName("secondary")
+        self.cancel_button.setProperty("actionBarButton", True)
+        self.cancel_button.setFixedHeight(34)
+        self.cancel_button.setAutoDefault(False)
+        self.cancel_button.clicked.connect(self.reject)
+
+        self.action_buttons: list[QPushButton] = [self.cancel_button]
+        footer_layout.addWidget(self.cancel_button)
+        footer_layout.addStretch(1)
+
+        if conflict_count > 0 and replace_mode == "ask":
+            for label, mode_value, is_primary in (
+                ("Keep both", "keep_both", False),
+                ("Skip", "keep", False),
+                ("Replace", "replace", True),
+            ):
+                btn = QPushButton(label)
+                btn.setObjectName("primaryAction" if is_primary else "secondary")
+                btn.setProperty("actionBarButton", True)
+                btn.setFixedHeight(34)
+                btn.setDefault(is_primary)
+                btn.setAutoDefault(is_primary)
+                btn.clicked.connect(lambda _checked=False, m=mode_value: self._choose(m))
+                footer_layout.addWidget(btn)
+                self.action_buttons.append(btn)
+                if is_primary:
+                    self.default_action_button = btn
+        else:
+            resolved_mode = "replace" if replace_mode == "ask" else replace_mode
+            export_btn = QPushButton("Export")
+            export_btn.setObjectName("primaryAction")
+            export_btn.setProperty("actionBarButton", True)
+            export_btn.setFixedHeight(34)
+            export_btn.setMinimumWidth(88)
+            export_btn.setDefault(True)
+            export_btn.setAutoDefault(True)
+            export_btn.clicked.connect(lambda _checked=False, m=resolved_mode: self._choose(m))
+            footer_layout.addWidget(export_btn)
+            self.action_buttons.append(export_btn)
+            self.default_action_button = export_btn
+
+        root_layout.addWidget(self.footer)
+        self.adjustSize()
+
+    def _choose(self, mode: str) -> None:
+        self.chosen_mode = mode
+        self.accept()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         app = QApplication.instance()
@@ -488,6 +690,8 @@ class MainWindow(QMainWindow):
         self._ui_ready = False
         self._compact_layout: bool | None = None
         self._pending_export = False
+        self._chosen_replace_mode: str | None = None
+        self._current_export_track: str | None = None
         self._scan_snapshot = None
         self._scan_selection = set()
         self._tracks_shown_for_scan = None
@@ -1168,7 +1372,9 @@ class MainWindow(QMainWindow):
         custom_song_name = self.project_name_input.text().strip() or None
         key = self.key_input.text().strip() or None
         artist = self.artist_input.text().strip() or None
-        replace_mode = "replace"
+        replace_mode = self._chosen_replace_mode or self.preferences.replace_mode
+        if replace_mode == "ask":
+            replace_mode = "replace"  # Real choice is made in the confirm box.
         job = self.state.build_export_job(
             key=key,
             artist=artist,
@@ -1179,8 +1385,14 @@ class MainWindow(QMainWindow):
             folder_name_format=self.preferences.folder_name_format,
         )
         self.current_job = replace(job, tracks=tracks)
+        existing_note = (
+            ' <span style="color: #6e6e73">· existing folder</span>'
+            if self.current_job.stems_dir.is_dir()
+            else ""
+        )
         self.destination_value.setText(
-            f'<a href="open" style="color: #a1a1a6; text-decoration: none">{html.escape(str(self.current_job.stems_dir))}</a>'
+            f'<a href="open" style="text-decoration: none">{folder_breadcrumb_html(self.current_job.stems_dir)}</a>'
+            f"{existing_note}"
         )
         self.destination_value.setToolTip(str(self.current_job.stems_dir))
         self._set_export_enabled(
@@ -1208,27 +1420,26 @@ class MainWindow(QMainWindow):
         if self.current_job is None or not self.current_job.selected_tracks:
             return
         export_range = getattr(self.state, "export_range", None)
-        default_start, default_end = DEFAULT_RANGE_BARS
-        range_headline = (
-            export_range.describe()[0]
-            if export_range is not None
-            else f"Bars {default_start} to {default_end}"
+        if export_range is not None:
+            range_headline, range_detail = export_range.describe()
+        else:
+            default_start, default_end = DEFAULT_RANGE_BARS
+            default_bars = default_end - default_start + 1
+            range_headline = f"Bars {default_start} to {default_end}"
+            range_detail = f"{default_bars} bars"
+        conflicts = find_conflicts(self.current_job)
+        confirm = ExportConfirmDialog(
+            self.current_job,
+            range_headline=range_headline,
+            range_detail=range_detail,
+            conflict_count=len(conflicts),
+            replace_mode=self.preferences.replace_mode,
+            parent=self,
         )
-        track_count = len(self.current_job.selected_tracks)
-        stem_word = "stem" if track_count == 1 else "stems"
-        confirm = QMessageBox(self)
-        confirm.setWindowTitle("Confirm Export")
-        confirm.setText(f"Export {track_count} {stem_word} ({range_headline})?")
-        confirm.setInformativeText(
-            f"Will export: {range_headline}\n"
-            f"Destination: {self.current_job.stems_dir}"
-        )
-        confirm.addButton("Cancel", QMessageBox.RejectRole)
-        export_button = confirm.addButton("Export", QMessageBox.AcceptRole)
-        confirm.setDefaultButton(export_button)
         confirm.exec()
-        if confirm.clickedButton() is not export_button:
+        if confirm.chosen_mode is None:
             return
+        self._chosen_replace_mode = confirm.chosen_mode
         self._pending_export = True
         self.scan_current_set()
 
@@ -1276,9 +1487,15 @@ class MainWindow(QMainWindow):
             current_index = int(parts.split("/")[0])
             self.progress_bar.setValue(current_index - 1)
             self.progress_label.setText(f"Exporting {track_name}")
+            self._current_export_track = track_name
             label = self.status_by_track_name.get(track_name)
             if label is not None:
                 self._set_track_status(label, "exporting")
+        elif event == "retry":
+            label = self.status_by_track_name.get(self._current_export_track or "")
+            if label is not None:
+                self._set_track_status(label, "retrying")
+            self.progress_label.setText(message)
         elif event in {"success", "skipped", "failed"}:
             self.progress_bar.setValue(min(self.progress_bar.value() + 1, self.progress_bar.maximum()))
             if event == "success":
@@ -1289,18 +1506,22 @@ class MainWindow(QMainWindow):
                 track_name = message.split(":", 1)[0]
             label = self.status_by_track_name.get(track_name)
             if label is not None:
-                self._set_track_status(label, event)
+                reason = message.split(":", 1)[1].strip() if event == "failed" and ":" in message else ""
+                self._set_track_status(label, event, reason=reason)
         self._set_export_progress_detail()
 
-    def _set_track_status(self, label: QLabel, status: str) -> None:
-        label.setText(
-            {
-                "exporting": "Exporting",
-                "success": "Exported",
-                "skipped": "Skipped",
-                "failed": "Failed",
-            }.get(status, status.title())
-        )
+    def _set_track_status(self, label: QLabel, status: str, reason: str = "") -> None:
+        text = {
+            "exporting": "Exporting",
+            "retrying": "Retrying",
+            "success": "Exported",
+            "skipped": "Already there",
+            "failed": "Failed",
+        }.get(status, status.title())
+        if reason:
+            text = f"Failed · {reason}"
+        label.setText(text)
+        label.setToolTip(text)
         label.setProperty("statusState", status)
         label.show()
         label.style().unpolish(label)
@@ -1309,6 +1530,7 @@ class MainWindow(QMainWindow):
         while parent is not None and not isinstance(parent, StemTrackRow):
             parent = parent.parentWidget()
         if parent is not None:
+            parent.set_animating(status in {"exporting", "retrying"})
             parent.update()
 
     def _set_progress_state(self, status: str) -> None:
@@ -1356,7 +1578,12 @@ class MainWindow(QMainWindow):
 
     def _handle_export_finished(self, result: ExportResult) -> None:
         self.current_result = result
-        failures = [item.track.name for item in result.items if item.status == "failed"]
+        self._chosen_replace_mode = None
+        failures = [
+            f"{item.track.name} ({short_failure_reason(item.error or '')})"
+            for item in result.items
+            if item.status == "failed"
+        ]
         total = len(result.job.selected_tracks)
         summary = f"Exported {result.success_count}/{total} stems to {result.job.stems_dir}."
         if failures:
@@ -1377,6 +1604,7 @@ class MainWindow(QMainWindow):
             self.open_export_folder()
 
     def _handle_export_failed(self, message: str) -> None:
+        self._chosen_replace_mode = None
         self._set_progress_state("export-failed")
         self.progress_label.setText("Export failed")
         self._set_progress_detail(message)

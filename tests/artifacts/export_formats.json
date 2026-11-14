@@ -1,0 +1,24 @@
+{
+  "mp3_into_existing_folder": [
+    "Song_BASS - C Major 120 BPM.mp3",
+    "Song_DRUMS - C Major 120 BPM.mp3"
+  ],
+  "replace_mp3_with_aiff": [
+    "Song_BASS - C Major 120 BPM.aiff",
+    "Song_DRUMS - C Major 120 BPM.aiff"
+  ],
+  "skip_existing": [
+    "skipped",
+    "skipped"
+  ],
+  "keep_both": [
+    "Song_BASS - C Major 120 BPM (2).wav",
+    "Song_BASS - C Major 120 BPM.aiff",
+    "Song_DRUMS - C Major 120 BPM (2).wav",
+    "Song_DRUMS - C Major 120 BPM.aiff"
+  ],
+  "failure_messages": [
+    "DRUMS: Couldn't type name",
+    "BASS: Couldn't type name"
+  ]
+}

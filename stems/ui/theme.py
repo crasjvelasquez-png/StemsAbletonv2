@@ -36,6 +36,14 @@ DESIGN_TOKENS = {
     "radius_control": "8px",
     "radius_pill": "8px",
     "font_family": '".AppleSystemUIFont", "Helvetica Neue"',
+    "sys_blue": "#0a84ff",
+    "sys_blue_text": "#6cb6ff",
+    "sys_blue_fill": "rgba(10, 132, 255, 0.18)",
+    "sys_blue_fill_hover": "rgba(10, 132, 255, 0.28)",
+    "group": "#1e1e20",
+    "group_border": "rgba(255, 255, 255, 0.06)",
+    "row_separator": "rgba(255, 255, 255, 0.07)",
+    "sep_fill": "rgba(255, 255, 255, 0.06)",
 }
 
 
@@ -97,10 +105,19 @@ QWidget#progressCard {{
     border: none;
 }}
 
-QWidget#preferencesPreviewCard {{
+QWidget#preferencesPreviewCard,
+QWidget#exportConfirmCard {{
     background-color: {DESIGN_TOKENS["panel"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_panel"]};
+}}
+
+QFrame#exportConfirmSeparator {{
+    background-color: {DESIGN_TOKENS["separator"]};
+    color: {DESIGN_TOKENS["separator"]};
+    border: none;
+    min-height: 1px;
+    max-height: 1px;
 }}
 
 QWidget#exportRangeBanner {{
@@ -124,6 +141,25 @@ QLabel#muted {{
     color: {DESIGN_TOKENS["text_muted"]};
     font-size: 12px;
     font-weight: 400;
+}}
+
+QLabel#exportConfirmLabel {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#exportConfirmValue {{
+    color: {DESIGN_TOKENS["text"]};
+    font-family: "Menlo", monospace;
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#exportConfirmConflict {{
+    color: {DESIGN_TOKENS["warning"]};
+    font-size: 12px;
+    font-weight: 500;
 }}
 
 QLabel#exportRangeLabel {{
@@ -403,6 +439,161 @@ QPushButton#headerAction:pressed {{
 
 QPushButton#headerAction:focus {{
     border: 1px solid {DESIGN_TOKENS["accent"]};
+}}
+
+/* Preferences dialog (macOS System Settings look) */
+QDialog#preferencesDialog QLabel#dialogTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+}}
+
+QLabel#prefsSubtitle {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#prefsGroupTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-size: 13px;
+    font-weight: 600;
+    padding-left: 2px;
+}}
+
+QWidget#prefsGroup {{
+    background-color: {DESIGN_TOKENS["group"]};
+    border: 1px solid {DESIGN_TOKENS["group_border"]};
+    border-radius: 12px;
+}}
+
+QFrame#prefsRowSeparator {{
+    background-color: {DESIGN_TOKENS["row_separator"]};
+    border: none;
+    max-height: 1px;
+}}
+
+QLabel#prefsRowLabel {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QLabel#prefsRowHint {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 11px;
+    font-weight: 400;
+}}
+
+QPushButton#nameBlockToken {{
+    background-color: {DESIGN_TOKENS["sys_blue_fill"]};
+    color: {DESIGN_TOKENS["sys_blue_text"]};
+    border: none;
+    border-radius: 13px;
+    padding: 0px 12px;
+    min-height: 26px;
+    max-height: 26px;
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QPushButton#nameBlockToken:hover {{
+    background-color: {DESIGN_TOKENS["sys_blue_fill_hover"]};
+}}
+
+QPushButton#nameBlockText {{
+    background-color: {DESIGN_TOKENS["sep_fill"]};
+    color: {DESIGN_TOKENS["text_muted"]};
+    border: none;
+    border-radius: 13px;
+    padding: 0px 9px;
+    min-height: 26px;
+    max-height: 26px;
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QPushButton#nameBlockText:hover {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    background-color: rgba(255, 255, 255, 0.10);
+}}
+
+QPushButton#nameBlockAdd {{
+    background-color: transparent;
+    color: {DESIGN_TOKENS["sys_blue_text"]};
+    border: 1px dashed rgba(10, 132, 255, 0.55);
+    border-radius: 13px;
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0px;
+    font-size: 16px;
+    font-weight: 500;
+}}
+
+QPushButton#nameBlockAdd:hover {{
+    background-color: {DESIGN_TOKENS["sys_blue_fill"]};
+}}
+
+QPushButton#nameBuilderTextToggle {{
+    background-color: transparent;
+    color: {DESIGN_TOKENS["sys_blue_text"]};
+    border: none;
+    padding: 0px;
+    font-size: 12px;
+    text-decoration: none;
+}}
+
+QPushButton#nameBuilderTextToggle:hover {{
+    color: #9ccdff;
+    background-color: transparent;
+}}
+
+QLabel#nameLooksLike {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QLabel#nameLooksLikeCaption {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 11px;
+    font-weight: 400;
+}}
+
+QLabel#prefsError {{
+    color: #ff6961;
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction {{
+    background-color: {DESIGN_TOKENS["sys_blue"]};
+    color: #ffffff;
+    border: none;
+    border-radius: 7px;
+    font-weight: 500;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction:hover {{
+    background-color: #2b95ff;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction:pressed {{
+    background-color: #0071e3;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction:disabled {{
+    background-color: {DESIGN_TOKENS["panel_soft"]};
+    color: {DESIGN_TOKENS["text_faint"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+}}
+
+QWidget#prefsGroup QComboBox {{
+    min-width: 180px;
 }}
 
 /* Lists */

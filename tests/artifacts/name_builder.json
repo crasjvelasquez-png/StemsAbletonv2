@@ -1,0 +1,44 @@
+{
+  "stem_format": "{artist} - {song} - {track} - {bpm}{key}",
+  "folder_format": "{song} - {date} - Stems - {key} {bpm} BPM",
+  "stem_blocks": [
+    [
+      "token",
+      "artist"
+    ],
+    [
+      "text",
+      " - "
+    ],
+    [
+      "token",
+      "song"
+    ],
+    [
+      "text",
+      " - "
+    ],
+    [
+      "token",
+      "track"
+    ],
+    [
+      "text",
+      " - "
+    ],
+    [
+      "token",
+      "bpm"
+    ],
+    [
+      "token",
+      "key"
+    ]
+  ],
+  "stem_looks_like": "Artist Name - MySong - DRUMS - 128F# Minor",
+  "folder_looks_like": "MySong - May 05 2026 - Stems - F# Minor 128 BPM",
+  "dialog_size": [
+    560,
+    790
+  ]
+}

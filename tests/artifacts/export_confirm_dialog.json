@@ -1,0 +1,34 @@
+{
+  "clean_export": {
+    "title": "Export 2 stems?",
+    "range": "Bars 8 to 71 \u00b7 64 bars \u00b7 2:45",
+    "folder": "<span style=\"color: #f5f5f7\">\ud83d\udcc1&nbsp;private <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;var <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;folders <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;7_ <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;c00h140d21lck3p67g817xh00000gn <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;T <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;pytest-of-c4milo <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;pytest-52 <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;test_export_confirm_dialog_con0 <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;Test&nbsp;Song&nbsp;-&nbsp;November&nbsp;14&nbsp;2026&nbsp;-&nbsp;Stems&nbsp;-&nbsp;93&nbsp;BPM</span>",
+    "folder_tooltip_has_parent": true,
+    "conflict_hidden": true,
+    "buttons": [
+      "Cancel",
+      "Export"
+    ],
+    "card_name": "exportConfirmCard",
+    "footer_name": "footerDock"
+  },
+  "conflict_ask_mode": {
+    "title": "Export 2 stems?",
+    "conflict": "1 of 2 already exist",
+    "conflict_hidden": false,
+    "buttons": [
+      "Cancel",
+      "Keep both",
+      "Skip",
+      "Replace"
+    ],
+    "default_button": "Replace"
+  },
+  "conflict_preset_keep": {
+    "conflict": "1 of 2 already exist \u00b7 will be skipped",
+    "buttons": [
+      "Cancel",
+      "Export"
+    ]
+  }
+}

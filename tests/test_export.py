@@ -3,16 +3,17 @@ import time
 import pytest
 
 from stems.errors import ExportAutomationError, PreflightCheckError
-from stems.export import ExportAutomation, execute_export_job, verify_exported_file, wait_for_new_wav
+from stems.export import ExportAutomation, execute_export_job, verify_exported_file, wait_for_exported_audio
 from stems.models import ExportJob, StemTrack
 
 
-def test_wait_for_new_wav_returns_settled_file(tmp_path):
+def test_wait_for_exported_audio_accepts_any_audio_format(tmp_path):
     export_start = time.time() - 1
-    output = tmp_path / "Song_DRUMS.wav"
-    output.write_bytes(b"1234")
-    found = wait_for_new_wav(output, export_start, timeout=1)
-    assert found == output
+    planned = tmp_path / "Song_DRUMS.wav"
+    actual = tmp_path / "Song_DRUMS.mp3"
+    actual.write_bytes(b"1234")
+    found = wait_for_exported_audio(planned, export_start, timeout=1, sleep=lambda _s: None)
+    assert found == actual
 
 
 class FakeAbletonClient:
@@ -98,18 +99,18 @@ def test_trigger_export_retries_before_succeeding(tmp_path):
 
     output = tmp_path / "Song_DRUMS.wav"
 
-    def fake_wait_for_new_wav(_output_path, _export_start, timeout=120, sleep=None, clock=None):
+    def fake_wait_for_exported_audio(_output_path, _export_start, timeout=120, sleep=None, clock=None):
         del timeout, sleep, clock
         output.write_bytes(b"wav")
         return output
 
     import stems.export as export_module
 
-    original = export_module.wait_for_new_wav
-    export_module.wait_for_new_wav = fake_wait_for_new_wav
+    original = export_module.wait_for_exported_audio
+    export_module.wait_for_exported_audio = fake_wait_for_exported_audio
     try:
         assert automation.trigger_export(output, tmp_path)
     finally:
-        export_module.wait_for_new_wav = original
+        export_module.wait_for_exported_audio = original
 
     assert calls["count"] == 2

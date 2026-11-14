@@ -6,7 +6,7 @@ from .models import StemTrack, normalize_track_color
 
 
 BUS_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9 _&/]+$")
-DEFAULT_EXCLUDED_NAMES = {"PRINT", "MIXBUS", "REF", "MASTER"}
+DEFAULT_EXCLUDED_NAMES = {"PRINT", "MIXBUS", "REF"}
 
 
 def is_stem_candidate(name: str, exclusions: set[str] | None = None) -> bool:

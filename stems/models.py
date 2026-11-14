@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 
-ReplaceMode = Literal["replace", "keep"]
+ReplaceMode = Literal["replace", "keep", "keep_both"]
 ExportStatus = Literal["pending", "skipped", "success", "failed"]
 DEFAULT_RANGE_BARS = (1, 200)
 
