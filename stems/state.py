@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
+from typing import Callable
 
 from .detection import find_bus_tracks
 from .models import ExportJob, ExportRange, ProjectContext, StemTrack
@@ -17,18 +19,39 @@ class AppState:
         self.detected_tracks: list[StemTrack] = []
         self.export_range: ExportRange | None = None
 
-    def scan_current_set(self) -> tuple[ProjectContext, list[StemTrack]]:
+    def scan_current_set(
+        self,
+        on_tracks: Callable[[list[StemTrack]], object] | None = None,
+    ) -> tuple[ProjectContext, list[StemTrack]]:
         self.export_range = None
+        project_result: list[tuple[Path, str]] = []
+        project_error: list[BaseException] = []
+
+        def _fetch_project() -> None:
+            try:
+                project_result.append(self.project_info_getter())
+            except BaseException as exc:
+                project_error.append(exc)
+
+        project_thread = threading.Thread(target=_fetch_project, daemon=True)
+        project_thread.start()
+
         count = self.ableton_client.get_track_count()
         bpm = self.ableton_client.get_bpm()
         self.all_tracks = self.ableton_client.get_all_tracks(count)
         self.detected_tracks = find_bus_tracks(self.all_tracks)
-        project_folder, song_name = self.project_info_getter()
-        self.project = ProjectContext(song_name=song_name, project_folder=project_folder, bpm=bpm)
+        if on_tracks is not None:
+            on_tracks(self.detected_tracks)
         try:
             self.export_range = self.ableton_client.get_export_range()
         except Exception:
             self.export_range = None
+
+        project_thread.join()
+        if project_error:
+            raise project_error[0]
+        project_folder, song_name = project_result[0]
+        self.project = ProjectContext(song_name=song_name, project_folder=project_folder, bpm=bpm)
         return self.project, self.detected_tracks
 
     def build_export_job(

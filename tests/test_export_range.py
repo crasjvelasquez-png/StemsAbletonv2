@@ -380,7 +380,7 @@ def test_main_window_displays_range_banner_handles_failure_and_confirms_range(qt
 
         assert window.export_range_banner.objectName() == "exportRangeBanner"
         assert window.export_range_banner.property("rangeMode") is None
-        assert window.export_range_label.text() == "Will export"
+        assert window.export_range_label.text() == "Range Selected"
         assert window.export_range_headline.objectName() == "exportRangeHeadline"
         assert window.export_range_headline.text() == "Bars 17 to 48"
         assert window.export_range_meta.text() == "32 bars · 1:04"

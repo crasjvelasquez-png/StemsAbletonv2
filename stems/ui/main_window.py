@@ -490,6 +490,7 @@ class MainWindow(QMainWindow):
         self._pending_export = False
         self._scan_snapshot = None
         self._scan_selection = set()
+        self._tracks_shown_for_scan = None
         self._last_scan = 0.0
         self._closing = False
         self._readiness_ok = False
@@ -974,11 +975,15 @@ class MainWindow(QMainWindow):
         if self.isActiveWindow() and not self._closing and self.export_thread is None and self.scan_thread is None:
             self.scan_current_set()
 
+    @staticmethod
+    def _track_signature(tracks: list[StemTrack]) -> tuple[tuple[int, str], ...]:
+        return tuple((track.index, track.name) for track in tracks)
+
     def _set_snapshot(self):
         if self.project is None:
             return None
         return (self.project.project_folder, self.project.song_name,
-                tuple((track.index, track.name) for track in self.state.detected_tracks))
+                self._track_signature(self.state.detected_tracks))
 
     def scan_current_set(self) -> None:
         if self.scan_thread is not None or self.export_thread is not None or self._closing:
@@ -986,6 +991,7 @@ class MainWindow(QMainWindow):
         self._last_scan = time.monotonic()
         self._scan_snapshot = self._set_snapshot()
         self._scan_selection = {(t.index, t.name) for t in self._selected_tracks()}
+        self._tracks_shown_for_scan = None
         self._readiness_ok = False
         self.retry_button.hide()
         self._arrange_action_buttons(self.width() < COMPACT_LAYOUT_BREAKPOINT)
@@ -1001,11 +1007,29 @@ class MainWindow(QMainWindow):
         self.scan_worker = ScanWorker(self.state)
         self.scan_worker.moveToThread(self.scan_thread)
         self.scan_thread.started.connect(self.scan_worker.run)
+        self.scan_worker.tracks_ready.connect(self._handle_tracks_ready)
         self.scan_worker.finished.connect(self._handle_scan_success)
         self.scan_worker.failed.connect(self._handle_scan_failure)
         self.scan_worker.finished.connect(self._cleanup_scan_thread)
         self.scan_worker.failed.connect(self._cleanup_scan_thread)
         self.scan_thread.start()
+
+    def _restore_scan_selection(self, tracks: list[StemTrack]) -> None:
+        """Restore checkbox selections captured at the start of a scan."""
+        for track in tracks:
+            row = self.track_list.itemWidget(self.item_by_track_name[track.name])
+            row.checkbox.setChecked((track.index, track.name) in self._scan_selection)
+
+    def _handle_tracks_ready(self, tracks: list[StemTrack]) -> None:
+        """Display detected stem rows while project folder lookup continues."""
+        track_tuple = self._track_signature(tracks)
+        self._populate_tracks(tracks)
+        if self._scan_snapshot is not None and self._scan_snapshot[2] == track_tuple:
+            self._restore_scan_selection(tracks)
+        self._tracks_shown_for_scan = track_tuple
+        count = len(tracks)
+        self._set_progress_detail(f"Found {count} stem{'s' if count != 1 else ''}, finding project folder")
+        self._set_export_enabled(False)
 
     def _handle_scan_success(self, state, project) -> None:
         self.state = state
@@ -1020,11 +1044,11 @@ class MainWindow(QMainWindow):
         self.project_name_input.setPlaceholderText(project.song_name)
         self.bpm_value.setText(f"{project.bpm} BPM" if project.bpm is not None else "Tempo unknown")
         self._update_export_range_banner(getattr(state, "export_range", None))
-        self._populate_tracks(state.detected_tracks)
-        if self._scan_snapshot is not None and not changed:
-            for track in state.detected_tracks:
-                row = self.track_list.itemWidget(self.item_by_track_name[track.name])
-                row.checkbox.setChecked((track.index, track.name) in self._scan_selection)
+        track_tuple = self._track_signature(state.detected_tracks)
+        if self._tracks_shown_for_scan != track_tuple:
+            self._populate_tracks(state.detected_tracks)
+            if self._scan_snapshot is not None and not changed:
+                self._restore_scan_selection(state.detected_tracks)
         self.update_destination_preview()
         count = len(state.detected_tracks)
         self.progress_bar.setRange(0, 1)

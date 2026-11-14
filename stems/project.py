@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -121,6 +122,14 @@ def _project_from_backup_candidate(path: Path, name: str) -> Path | None:
 
 SPOTLIGHT_ATTEMPTS = 3
 SPOTLIGHT_RETRY_DELAY = 1.0
+_LAST_KNOWN_ALS: dict[str, Path] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def clear_project_cache() -> None:
+    """Clear cached song-to-.als path mappings."""
+    with _CACHE_LOCK:
+        _LAST_KNOWN_ALS.clear()
 
 
 def _spotlight_candidates(song_name: str, runner) -> list[Path]:
@@ -165,6 +174,17 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk, sleep=time
         candidates = _spotlight_candidates(song_name, runner)
         if candidates:
             break
+        if attempt == 0:
+            with _CACHE_LOCK:
+                cached = _LAST_KNOWN_ALS.get(song_name)
+            if cached is not None:
+                if cached.exists() and not _bad_path(cached):
+                    with _CACHE_LOCK:
+                        _LAST_KNOWN_ALS[song_name] = cached
+                    return cached.parent, cached.stem
+                with _CACHE_LOCK:
+                    if _LAST_KNOWN_ALS.get(song_name) == cached:
+                        _LAST_KNOWN_ALS.pop(song_name, None)
         if attempt < SPOTLIGHT_ATTEMPTS - 1:
             sleep(SPOTLIGHT_RETRY_DELAY)
 
@@ -177,6 +197,8 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk, sleep=time
 
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     als_path = candidates[0]
+    with _CACHE_LOCK:
+        _LAST_KNOWN_ALS[song_name] = als_path
     return als_path.parent, als_path.stem
 
 
