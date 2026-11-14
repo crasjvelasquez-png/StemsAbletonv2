@@ -562,7 +562,7 @@ class MainWindow(QMainWindow):
         left_col.setContentsMargins(0, 0, 0, 0)
         left_col.setSpacing(2)
 
-        self.export_range_label = QLabel("Current range")
+        self.export_range_label = QLabel("Will export")
         self.export_range_label.setObjectName("exportRangeLabel")
 
         self.export_range_headline = QLabel()
@@ -1175,7 +1175,7 @@ class MainWindow(QMainWindow):
         confirm.setWindowTitle("Confirm Export")
         confirm.setText(f"Export {track_count} {stem_word} ({range_headline})?")
         confirm.setInformativeText(
-            f"Current range: {range_headline}\n"
+            f"Will export: {range_headline}\n"
             f"Destination: {self.current_job.stems_dir}"
         )
         confirm.addButton("Cancel", QMessageBox.RejectRole)

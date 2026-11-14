@@ -31,7 +31,6 @@ class StemTrack:
 
 @dataclass(frozen=True)
 class ExportRange:
-    loop_enabled: bool
     start_beats: float
     length_beats: float
     numerator: int
