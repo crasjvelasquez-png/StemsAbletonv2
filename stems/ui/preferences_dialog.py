@@ -43,7 +43,7 @@ class PreferencesDialog(QDialog):
         layout.addWidget(self.auto_open_folder)
         layout.addStretch()
         footer = QHBoxLayout()
-        self.reset_button = QPushButton("Reset to Defaults")
+        self.reset_button = QPushButton("Reset to defaults")
         self.saved_label = QLabel("Saved")
         self.close_button = QPushButton("Done")
         self.close_button.setDefault(True)

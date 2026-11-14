@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from .models import normalize_track_color
 from .osc import OSCGateway
+
+
+COLOR_FETCH_TIMEOUT = 1.5
 
 
 class AbletonClient:
@@ -29,7 +33,24 @@ class AbletonClient:
 
     def get_all_tracks(self, count: int) -> list[dict[str, object]]:
         names = self.gateway.fetch_all_parallel("/live/track/get/name", count)
-        return [{"index": index, "name": str(names.get(index, ""))} for index in range(count)]
+        try:
+            colors = self.gateway.fetch_all_parallel(
+                "/live/track/get/color",
+                count,
+                timeout=COLOR_FETCH_TIMEOUT,
+            )
+        except Exception:
+            colors = {}
+        if not isinstance(colors, dict):
+            colors = {}
+        return [
+            {
+                "index": index,
+                "name": str(names.get(index, "")),
+                "color": normalize_track_color(colors.get(index)),
+            }
+            for index in range(count)
+        ]
 
     def get_song_tempo(self):
         return self.gateway.ask("/live/song/get/tempo")

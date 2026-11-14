@@ -9,6 +9,14 @@ ReplaceMode = Literal["replace", "keep"]
 ExportStatus = Literal["pending", "skipped", "success", "failed"]
 
 
+def normalize_track_color(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if 0 <= value <= 0xFFFFFF:
+        return int(value)
+    return None
+
+
 @dataclass(frozen=True)
 class StemTrack:
     index: int
@@ -16,6 +24,7 @@ class StemTrack:
     selected: bool = True
     detected: bool = True
     excluded_reason: str | None = None
+    color: int | None = None
 
 
 @dataclass(frozen=True)

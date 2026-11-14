@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from pathlib import Path
 
 from .errors import ProjectDetectionError
@@ -118,16 +119,11 @@ def _project_from_backup_candidate(path: Path, name: str) -> Path | None:
     return None
 
 
-def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[Path, str]:
-    song_name, title_errors = _read_live_window_title_with_errors(runner)
+SPOTLIGHT_ATTEMPTS = 3
+SPOTLIGHT_RETRY_DELAY = 1.0
 
-    if not song_name:
-        detail = ""
-        if title_errors:
-            detail = f" Last AppleScript error: {title_errors[-1]}"
-        raise ProjectDetectionError(f"Could not read project name from Ableton's window title.{detail}")
 
-    candidates: list[Path] = []
+def _spotlight_candidates(song_name: str, runner) -> list[Path]:
     try:
         escaped = song_name.replace('"', '\\"')
         result = runner(
@@ -144,8 +140,30 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[P
                 for path in mdfind_paths
                 if (candidate := _project_from_backup_candidate(path, song_name)) is not None
             ]
+        return candidates
     except Exception:
-        candidates = []
+        return []
+
+
+def get_project_info(runner=subprocess.run, finder=_find_als_on_disk, sleep=time.sleep) -> tuple[Path, str]:
+    song_name, title_errors = _read_live_window_title_with_errors(runner)
+
+    if not song_name:
+        detail = ""
+        if title_errors:
+            detail = f" Last AppleScript error: {title_errors[-1]}"
+        raise ProjectDetectionError(f"Could not read project name from Ableton's window title.{detail}")
+
+    # Spotlight can briefly lose a file while Ableton is saving it. Ask a few
+    # times before falling back to the slow disk search, which can time out on
+    # external drives.
+    candidates: list[Path] = []
+    for attempt in range(SPOTLIGHT_ATTEMPTS):
+        candidates = _spotlight_candidates(song_name, runner)
+        if candidates:
+            break
+        if attempt < SPOTLIGHT_ATTEMPTS - 1:
+            sleep(SPOTLIGHT_RETRY_DELAY)
 
     if not candidates:
         logger.info("  (Spotlight didn't find '%s.als', searching disk...)", song_name)
