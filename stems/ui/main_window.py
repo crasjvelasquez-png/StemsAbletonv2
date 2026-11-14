@@ -21,11 +21,13 @@ try:
         QFont,
         QFontMetrics,
         QIcon,
+        QKeySequence,
         QPainter,
         QPainterPath,
         QPalette,
         QPen,
         QPixmap,
+        QShortcut,
     )
     from PySide6.QtWidgets import (
         QAbstractItemView,
@@ -493,6 +495,9 @@ class MainWindow(QMainWindow):
         self._readiness_ok = False
 
         self._build_ui()
+        self._quit_shortcut = QShortcut(QKeySequence.Quit, self)
+        self._quit_shortcut.setContext(Qt.ApplicationShortcut)
+        self._quit_shortcut.activated.connect(self.close)
         self._ui_ready = True
         self._apply_preferences_to_ui()
         if is_launch_agent_installed():
@@ -562,7 +567,7 @@ class MainWindow(QMainWindow):
         left_col.setContentsMargins(0, 0, 0, 0)
         left_col.setSpacing(2)
 
-        self.export_range_label = QLabel("Will export")
+        self.export_range_label = QLabel("Range Selected")
         self.export_range_label.setObjectName("exportRangeLabel")
 
         self.export_range_headline = QLabel()
@@ -1373,10 +1378,9 @@ class MainWindow(QMainWindow):
         subprocess.run(["open", str(path)], check=False)
 
     def closeEvent(self, event) -> None:
-        if self.export_thread is not None or self.scan_thread is not None:
+        if self.export_thread is not None:
             event.ignore()
-            if self.export_thread is not None:
-                self.cancel_export()
+            self.cancel_export()
             self._closing = True
             return
         self._closing = True
@@ -1386,4 +1390,10 @@ class MainWindow(QMainWindow):
         self.preferences.panel_height = self.height()
         self.preferences_store.save(self.preferences)
         self.gateway.stop_listener()
+        if self.scan_thread is not None:
+            # A scan is mid-flight; don't make quitting wait for it.
+            self.scan_thread.quit()
+            if not self.scan_thread.wait(300):
+                import os
+                os._exit(0)
         super().closeEvent(event)

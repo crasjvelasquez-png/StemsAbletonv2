@@ -127,7 +127,7 @@ QLabel#muted {{
 }}
 
 QLabel#exportRangeLabel {{
-    color: {DESIGN_TOKENS["text_muted"]};
+    color: {DESIGN_TOKENS["text_faint"]};
     font-size: 12px;
     font-weight: 400;
 }}
