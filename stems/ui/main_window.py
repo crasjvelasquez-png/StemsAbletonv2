@@ -9,7 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..ableton import AbletonClient
-from ..models import ExportJob, ExportRange, ExportResult, StemTrack
+from ..models import DEFAULT_RANGE_BARS, ExportJob, ExportRange, ExportResult, StemTrack
 from ..osc import OSCGateway
 from ..preferences import Preferences, PreferencesStore
 from ..state import AppState
@@ -382,6 +382,76 @@ class StemTrackRow(QWidget):
         painter.end()
 
 
+def _ruler_total_bars(end_bar: int) -> int:
+    target = max(DEFAULT_RANGE_BARS[1], end_bar)
+    return ((target + 7) // 8) * 8
+
+
+class RangeRuler(QWidget):
+    def __init__(
+        self,
+        start_bar: int = DEFAULT_RANGE_BARS[0],
+        end_bar: int = DEFAULT_RANGE_BARS[1],
+        total_bars: int = DEFAULT_RANGE_BARS[1],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.start_bar = start_bar
+        self.end_bar = end_bar
+        self.total_bars = max(1, total_bars)
+        self.setFixedHeight(40)
+
+    def set_range(self, start_bar: int, end_bar: int, total_bars: int) -> None:
+        self.start_bar = start_bar
+        self.end_bar = end_bar
+        self.total_bars = max(1, total_bars)
+        self.update()
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt override name
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        w = self.width()
+        total = max(1, self.total_bars)
+        if w <= 0:
+            painter.end()
+            return
+
+        y = 8
+
+        def bar_x(bar: int) -> float:
+            return (bar - 1) / total * w
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#2a2a2d"))
+        painter.drawRoundedRect(QRectF(0, y, w, 8), 4, 4)
+
+        start = max(1, min(self.start_bar, total))
+        end = max(start, min(self.end_bar, total))
+        x_start = bar_x(start)
+        x_end = bar_x(end + 1)
+        highlight_w = max(2.0, min(float(w) - x_start, x_end - x_start))
+        painter.setBrush(QColor(DESIGN_TOKENS["text"]))
+        painter.drawRoundedRect(QRectF(x_start, y, highlight_w, 8), 4, 4)
+
+        font = QFont("Menlo")
+        font.setPixelSize(11)
+        painter.setFont(font)
+        faint_color = QColor(DESIGN_TOKENS["text_faint"])
+        for bar in range(1, total + 1, 4):
+            major = (bar - 1) % 24 == 0
+            tick_color = QColor(faint_color)
+            tick_color.setAlpha(200 if major else 90)
+            painter.setPen(QPen(tick_color, 1))
+            tick_x = int(bar_x(bar))
+            painter.drawLine(tick_x, y + 14, tick_x, y + (22 if major else 19))
+            label = str(bar)
+            if major and tick_x + 4 + painter.fontMetrics().horizontalAdvance(label) <= w:
+                painter.setPen(faint_color)
+                painter.drawText(tick_x + 4, y + 31, label)
+
+        painter.end()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         app = QApplication.instance()
@@ -481,50 +551,55 @@ class MainWindow(QMainWindow):
         self.export_range_banner = banner
 
         layout = QVBoxLayout(banner)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(4)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
 
-        self.export_range_caption = QLabel("EXPORT RANGE")
-        self.export_range_caption.setObjectName("exportRangeCaption")
-        self.export_range_caption.setWordWrap(True)
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(12)
 
-        self.export_range_headline = QLabel("Range unknown")
+        left_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(2)
+
+        self.export_range_label = QLabel("Current range")
+        self.export_range_label.setObjectName("exportRangeLabel")
+
+        self.export_range_headline = QLabel()
         self.export_range_headline.setObjectName("exportRangeHeadline")
-        self.export_range_headline.setWordWrap(True)
         self.export_range_headline.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
-        self.export_range_detail = QLabel("Could not read the loop from Ableton.")
-        self.export_range_detail.setObjectName("exportRangeDetail")
-        self.export_range_detail.setWordWrap(True)
-        self.export_range_detail.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        left_col.addWidget(self.export_range_label)
+        left_col.addWidget(self.export_range_headline)
 
-        layout.addWidget(self.export_range_caption)
-        layout.addWidget(self.export_range_headline)
-        layout.addWidget(self.export_range_detail)
+        self.export_range_meta = QLabel()
+        self.export_range_meta.setObjectName("exportRangeMeta")
+        self.export_range_meta.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        top_row.addLayout(left_col, 1)
+        top_row.addWidget(self.export_range_meta, 0, Qt.AlignRight | Qt.AlignVCenter)
+
+        self.export_range_ruler = RangeRuler()
+
+        layout.addLayout(top_row)
+        layout.addWidget(self.export_range_ruler)
         self._update_export_range_banner(None)
         return banner
 
     def _update_export_range_banner(self, export_range: ExportRange | None) -> None:
-        if export_range is None:
-            mode = "unknown"
-            headline = "Range unknown"
-            detail = "Could not read the loop from Ableton."
+        default_start, default_end = DEFAULT_RANGE_BARS
+        if export_range is None or export_range.length_beats <= 0:
+            start_bar, end_bar = default_start, default_end
+            headline = f"Bars {default_start} to {default_end}"
+            detail = f"{default_end - default_start + 1} bars"
         else:
+            start_bar = export_range.start_bar
+            end_bar = export_range.end_bar
             headline, detail = export_range.describe()
-            mode = "loop" if export_range.loop_enabled and export_range.length_beats > 0 else "whole"
 
         self.export_range_headline.setText(headline)
-        self.export_range_detail.setText(detail)
-        for widget in (
-            self.export_range_banner,
-            self.export_range_caption,
-            self.export_range_headline,
-            self.export_range_detail,
-        ):
-            widget.setProperty("rangeMode", mode)
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
-            widget.update()
+        self.export_range_meta.setText(detail)
+        self.export_range_ruler.set_range(start_bar, end_bar, _ruler_total_bars(end_bar))
 
     def _build_header_section(self) -> QWidget:
         section = QWidget()
@@ -1088,14 +1163,19 @@ class MainWindow(QMainWindow):
         if self.current_job is None or not self.current_job.selected_tracks:
             return
         export_range = getattr(self.state, "export_range", None)
-        range_headline = export_range.describe()[0] if export_range is not None else "Range unknown"
+        default_start, default_end = DEFAULT_RANGE_BARS
+        range_headline = (
+            export_range.describe()[0]
+            if export_range is not None
+            else f"Bars {default_start} to {default_end}"
+        )
         track_count = len(self.current_job.selected_tracks)
         stem_word = "stem" if track_count == 1 else "stems"
         confirm = QMessageBox(self)
         confirm.setWindowTitle("Confirm Export")
         confirm.setText(f"Export {track_count} {stem_word} ({range_headline})?")
         confirm.setInformativeText(
-            f"Export range: {range_headline}\n"
+            f"Current range: {range_headline}\n"
             f"Destination: {self.current_job.stems_dir}"
         )
         confirm.addButton("Cancel", QMessageBox.RejectRole)

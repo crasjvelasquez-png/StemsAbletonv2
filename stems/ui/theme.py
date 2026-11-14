@@ -109,21 +109,6 @@ QWidget#exportRangeBanner {{
     border-radius: {DESIGN_TOKENS["radius_panel"]};
 }}
 
-QWidget#exportRangeBanner[rangeMode="loop"] {{
-    background-color: {DESIGN_TOKENS["panel_soft"]};
-    border: 1px solid {DESIGN_TOKENS["success"]};
-}}
-
-QWidget#exportRangeBanner[rangeMode="whole"] {{
-    background-color: {DESIGN_TOKENS["panel"]};
-    border: 1px solid {DESIGN_TOKENS["border_strong"]};
-}}
-
-QWidget#exportRangeBanner[rangeMode="unknown"] {{
-    background-color: {DESIGN_TOKENS["panel"]};
-    border: 1px solid {DESIGN_TOKENS["border"]};
-}}
-
 QWidget#footerDock {{
     background-color: {DESIGN_TOKENS["background"]};
     border-top: 1px solid {DESIGN_TOKENS["separator"]};
@@ -141,38 +126,22 @@ QLabel#muted {{
     font-weight: 400;
 }}
 
-QLabel#exportRangeCaption {{
-    color: {DESIGN_TOKENS["text_faint"]};
-    font-family: "Menlo", monospace;
-    font-size: 11px;
-    font-weight: 600;
-}}
-
-QLabel#exportRangeCaption[rangeMode="loop"] {{
-    color: {DESIGN_TOKENS["success"]};
-}}
-
-QLabel#exportRangeCaption[rangeMode="whole"] {{
-    color: {DESIGN_TOKENS["warning"]};
-}}
-
-QLabel#exportRangeCaption[rangeMode="unknown"] {{
-    color: {DESIGN_TOKENS["text_faint"]};
+QLabel#exportRangeLabel {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 12px;
+    font-weight: 400;
 }}
 
 QLabel#exportRangeHeadline {{
-    color: {DESIGN_TOKENS["text_strong"]};
+    color: {DESIGN_TOKENS["text"]};
     font-family: {DESIGN_TOKENS["font_family"]};
-    font-size: 20px;
-    font-weight: 700;
+    font-size: 18px;
+    font-weight: 500;
 }}
 
-QLabel#exportRangeHeadline[rangeMode="unknown"] {{
+QLabel#exportRangeMeta {{
     color: {DESIGN_TOKENS["text_muted"]};
-}}
-
-QLabel#exportRangeDetail {{
-    color: {DESIGN_TOKENS["text_muted"]};
+    font-family: "Menlo", monospace;
     font-size: 12px;
     font-weight: 400;
 }}

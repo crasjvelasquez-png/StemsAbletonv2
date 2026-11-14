@@ -8,6 +8,7 @@ from typing import Literal
 
 ReplaceMode = Literal["replace", "keep"]
 ExportStatus = Literal["pending", "skipped", "success", "failed"]
+DEFAULT_RANGE_BARS = (1, 200)
 
 
 def normalize_track_color(value: object) -> int | None:
@@ -60,11 +61,10 @@ class ExportRange:
         return self.length_beats * 60.0 / self.bpm
 
     def describe(self) -> tuple[str, str]:
-        if not self.loop_enabled or self.length_beats <= 0:
-            return (
-                "Whole song",
-                "Loop is off in Ableton. Turn on the loop brace around a section to export only that part.",
-            )
+        if self.length_beats <= 0:
+            default_start, default_end = DEFAULT_RANGE_BARS
+            default_bars = default_end - default_start + 1
+            return f"Bars {default_start} to {default_end}", f"{default_bars} bars"
         bars = self.bar_count
         bar_word = "bar" if bars == 1 else "bars"
         headline = f"Bars {self.start_bar} to {self.end_bar}"
@@ -72,9 +72,9 @@ class ExportRange:
         if duration is not None:
             total_seconds = max(0, round(duration))
             minutes, seconds = divmod(total_seconds, 60)
-            detail = f"{bars} {bar_word}, {minutes}:{seconds:02d} long. Set by the loop brace in Ableton."
+            detail = f"{bars} {bar_word} · {minutes}:{seconds:02d}"
         else:
-            detail = f"{bars} {bar_word}. Set by the loop brace in Ableton."
+            detail = f"{bars} {bar_word}"
         return headline, detail
 
 
