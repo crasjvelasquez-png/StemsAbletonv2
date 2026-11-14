@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .detection import find_bus_tracks
-from .models import ExportJob, ProjectContext, StemTrack
+from .models import ExportJob, ExportRange, ProjectContext, StemTrack
 from .project import get_project_info, stems_folder_path
 
 
@@ -15,14 +15,20 @@ class AppState:
         self.project: ProjectContext | None = None
         self.all_tracks: list[dict[str, object]] = []
         self.detected_tracks: list[StemTrack] = []
+        self.export_range: ExportRange | None = None
 
     def scan_current_set(self) -> tuple[ProjectContext, list[StemTrack]]:
+        self.export_range = None
         count = self.ableton_client.get_track_count()
         bpm = self.ableton_client.get_bpm()
         self.all_tracks = self.ableton_client.get_all_tracks(count)
         self.detected_tracks = find_bus_tracks(self.all_tracks)
         project_folder, song_name = self.project_info_getter()
         self.project = ProjectContext(song_name=song_name, project_folder=project_folder, bpm=bpm)
+        try:
+            self.export_range = self.ableton_client.get_export_range()
+        except Exception:
+            self.export_range = None
         return self.project, self.detected_tracks
 
     def build_export_job(

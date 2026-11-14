@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import math
 import subprocess
 import sys
 import time
@@ -8,7 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..ableton import AbletonClient
-from ..models import ExportJob, ExportResult, StemTrack
+from ..models import ExportJob, ExportRange, ExportResult, StemTrack
 from ..osc import OSCGateway
 from ..preferences import Preferences, PreferencesStore
 from ..state import AppState
@@ -109,21 +110,41 @@ def _app_icon() -> QIcon:
     return QIcon(str(_resource_path("assets", "logo", "stems-tower.png")))
 
 
-def _sliders_icon(size: int = 16) -> QIcon:
+def _gear_icon(size: int = 16) -> QIcon:
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
-    pen = QPen(QColor("#a1a1a6"))
-    pen.setWidthF(1.5)
-    pen.setCapStyle(Qt.RoundCap)
-    painter.setPen(pen)
-    painter.setBrush(QColor("#a1a1a6"))
-    for y, knob_x in ((4.0, 10.0), (8.0, 6.0), (12.0, 11.0)):
-        painter.drawLine(QPointF(2.0, y), QPointF(size - 2.0, y))
-        painter.drawEllipse(QPointF(knob_x, y), 1.6, 1.6)
+
+    color = QColor("#a1a1a6")
+    center = QPointF(size / 2.0, size / 2.0)
+    scale = size / 16.0
+
+    # 8 radial gear teeth
+    painter.setPen(QPen(color, 1.6 * scale, Qt.SolidLine, Qt.RoundCap))
+    painter.setBrush(Qt.NoBrush)
+    inner_r = 4.7 * scale
+    outer_r = 6.5 * scale
+    for i in range(8):
+        angle = i * (math.pi / 4.0)
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        painter.drawLine(
+            QPointF(center.x() + inner_r * cos_a, center.y() + inner_r * sin_a),
+            QPointF(center.x() + outer_r * cos_a, center.y() + outer_r * sin_a),
+        )
+
+    # Outer gear ring with a transparent inner hole
+    painter.setPen(QPen(color, 1.7 * scale))
+    painter.setBrush(Qt.NoBrush)
+    ring_r = 4.1 * scale
+    painter.drawEllipse(center, ring_r, ring_r)
+
     painter.end()
     return QIcon(pixmap)
+
+
+_sliders_icon = _gear_icon
 
 
 def _relative_luminance(color: QColor) -> float:
@@ -431,6 +452,8 @@ class MainWindow(QMainWindow):
 
         self.content_layout.addWidget(self._build_header_section())
         self.content_layout.addSpacing(int(self.ui_sizes["header_bottom_spacing"]))
+        self.content_layout.addWidget(self._build_export_range_banner())
+        self.content_layout.addSpacing(int(self.ui_sizes["header_bottom_spacing"]))
         self.content_layout.addWidget(self._build_detected_stems_section())
         self.content_layout.addSpacing(int(self.ui_sizes["export_top_spacing"]))
         self.content_layout.addWidget(self._build_export_section())
@@ -449,6 +472,59 @@ class MainWindow(QMainWindow):
         self.action_layout = self._build_action_row()
         footer_layout.addLayout(self.action_layout)
         self.window_layout.addWidget(self.footer_dock)
+
+    def _build_export_range_banner(self) -> QWidget:
+        banner = QWidget()
+        banner.setObjectName("exportRangeBanner")
+        banner.setAttribute(Qt.WA_StyledBackground, True)
+        banner.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.export_range_banner = banner
+
+        layout = QVBoxLayout(banner)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
+
+        self.export_range_caption = QLabel("EXPORT RANGE")
+        self.export_range_caption.setObjectName("exportRangeCaption")
+        self.export_range_caption.setWordWrap(True)
+
+        self.export_range_headline = QLabel("Range unknown")
+        self.export_range_headline.setObjectName("exportRangeHeadline")
+        self.export_range_headline.setWordWrap(True)
+        self.export_range_headline.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        self.export_range_detail = QLabel("Could not read the loop from Ableton.")
+        self.export_range_detail.setObjectName("exportRangeDetail")
+        self.export_range_detail.setWordWrap(True)
+        self.export_range_detail.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        layout.addWidget(self.export_range_caption)
+        layout.addWidget(self.export_range_headline)
+        layout.addWidget(self.export_range_detail)
+        self._update_export_range_banner(None)
+        return banner
+
+    def _update_export_range_banner(self, export_range: ExportRange | None) -> None:
+        if export_range is None:
+            mode = "unknown"
+            headline = "Range unknown"
+            detail = "Could not read the loop from Ableton."
+        else:
+            headline, detail = export_range.describe()
+            mode = "loop" if export_range.loop_enabled and export_range.length_beats > 0 else "whole"
+
+        self.export_range_headline.setText(headline)
+        self.export_range_detail.setText(detail)
+        for widget in (
+            self.export_range_banner,
+            self.export_range_caption,
+            self.export_range_headline,
+            self.export_range_detail,
+        ):
+            widget.setProperty("rangeMode", mode)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+            widget.update()
 
     def _build_header_section(self) -> QWidget:
         section = QWidget()
@@ -499,7 +575,7 @@ class MainWindow(QMainWindow):
         self.preferences_button.setObjectName("headerAction")
         self.preferences_button.setToolTip("Preferences")
         self.preferences_button.setAccessibleName(self.preferences_button.toolTip())
-        self.preferences_button.setIcon(_sliders_icon())
+        self.preferences_button.setIcon(_gear_icon())
         self.preferences_button.setIconSize(QSize(16, 16))
         header_button = int(self.ui_sizes["header_button"])
         self.preferences_button.setFixedSize(QSize(header_button, header_button))
@@ -863,6 +939,7 @@ class MainWindow(QMainWindow):
         self.song_value.setText(project.song_name)
         self.project_name_input.setPlaceholderText(project.song_name)
         self.bpm_value.setText(f"{project.bpm} BPM" if project.bpm is not None else "Tempo unknown")
+        self._update_export_range_banner(getattr(state, "export_range", None))
         self._populate_tracks(state.detected_tracks)
         if self._scan_snapshot is not None and not changed:
             for track in state.detected_tracks:
@@ -884,6 +961,7 @@ class MainWindow(QMainWindow):
         self._set_open_available(self.current_job is not None or self.project is not None)
 
     def _handle_scan_failure(self, message: str) -> None:
+        self._update_export_range_banner(None)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self._set_progress_state("scan-failed")
@@ -891,6 +969,9 @@ class MainWindow(QMainWindow):
         self._set_progress_detail(message)
         self._readiness_ok = False
         self._pending_export = False
+        self.project = None
+        self.current_job = None
+        self.update_destination_preview()
         self._set_export_enabled(False)
         self.retry_button.show()
         self._arrange_action_buttons(self.width() < COMPACT_LAYOUT_BREAKPOINT)
@@ -960,8 +1041,11 @@ class MainWindow(QMainWindow):
     def update_destination_preview(self) -> None:
         if self.state is None or self.project is None:
             self.destination_value.setText("-")
+            self.destination_value.setToolTip("")
+            self._export_pair_widgets[2].setVisible(False)
             self._set_open_available(False)
             return
+        self._export_pair_widgets[2].setVisible(True)
         tracks = self._selected_tracks()
         custom_song_name = self.project_name_input.text().strip() or None
         key = self.key_input.text().strip() or None
@@ -999,6 +1083,26 @@ class MainWindow(QMainWindow):
 
     def confirm_export(self) -> None:
         if self.scan_thread is not None or self.export_thread is not None:
+            return
+        self.update_destination_preview()
+        if self.current_job is None or not self.current_job.selected_tracks:
+            return
+        export_range = getattr(self.state, "export_range", None)
+        range_headline = export_range.describe()[0] if export_range is not None else "Range unknown"
+        track_count = len(self.current_job.selected_tracks)
+        stem_word = "stem" if track_count == 1 else "stems"
+        confirm = QMessageBox(self)
+        confirm.setWindowTitle("Confirm Export")
+        confirm.setText(f"Export {track_count} {stem_word} ({range_headline})?")
+        confirm.setInformativeText(
+            f"Export range: {range_headline}\n"
+            f"Destination: {self.current_job.stems_dir}"
+        )
+        confirm.addButton("Cancel", QMessageBox.RejectRole)
+        export_button = confirm.addButton("Export", QMessageBox.AcceptRole)
+        confirm.setDefaultButton(export_button)
+        confirm.exec()
+        if confirm.clickedButton() is not export_button:
             return
         self._pending_export = True
         self.scan_current_set()

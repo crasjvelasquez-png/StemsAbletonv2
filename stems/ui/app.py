@@ -12,6 +12,9 @@ def main() -> int:
     from .main_window import MainWindow
 
     app = QApplication.instance() or QApplication(sys.argv)
+    from ..permissions import request_accessibility_prompt
+
+    request_accessibility_prompt()
     window = MainWindow()
     window.show()
     return app.exec()

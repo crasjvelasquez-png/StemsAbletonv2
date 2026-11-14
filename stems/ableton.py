@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import normalize_track_color
+from .models import ExportRange, normalize_track_color
 from .osc import OSCGateway
 
 
@@ -63,3 +63,32 @@ class AbletonClient:
 
     def get_song_length(self):
         return self.gateway.ask("/live/song/get/song_length")
+
+    def get_export_range(self) -> ExportRange | None:
+        loop_reply = self.gateway.ask("/live/song/get/loop")
+        start_reply = self.gateway.ask("/live/song/get/loop_start")
+        length_reply = self.gateway.ask("/live/song/get/loop_length")
+        num_reply = self.get_signature_numerator()
+        den_reply = self.get_signature_denominator()
+        if not loop_reply or not start_reply or not length_reply or not num_reply or not den_reply:
+            return None
+        try:
+            loop_val = loop_reply[0]
+            loop_enabled = loop_val if isinstance(loop_val, bool) else bool(int(loop_val))
+            start_beats = float(start_reply[0])
+            length_beats = float(length_reply[0])
+            numerator = int(num_reply[0])
+            denominator = int(den_reply[0])
+        except (TypeError, ValueError):
+            return None
+        if denominator <= 0 or numerator <= 0:
+            return None
+        bpm = self.get_bpm()
+        return ExportRange(
+            loop_enabled=loop_enabled,
+            start_beats=start_beats,
+            length_beats=length_beats,
+            numerator=numerator,
+            denominator=denominator,
+            bpm=float(bpm) if bpm is not None else None,
+        )

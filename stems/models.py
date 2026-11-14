@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -25,6 +26,56 @@ class StemTrack:
     detected: bool = True
     excluded_reason: str | None = None
     color: int | None = None
+
+
+@dataclass(frozen=True)
+class ExportRange:
+    loop_enabled: bool
+    start_beats: float
+    length_beats: float
+    numerator: int
+    denominator: int
+    bpm: float | None
+
+    @property
+    def beats_per_bar(self) -> float:
+        return self.numerator * 4.0 / self.denominator
+
+    @property
+    def start_bar(self) -> int:
+        return math.floor(self.start_beats / self.beats_per_bar) + 1
+
+    @property
+    def end_bar(self) -> int:
+        return math.ceil((self.start_beats + self.length_beats) / self.beats_per_bar)
+
+    @property
+    def bar_count(self) -> int:
+        return self.end_bar - self.start_bar + 1
+
+    @property
+    def duration_seconds(self) -> float | None:
+        if self.bpm is None or self.bpm <= 0:
+            return None
+        return self.length_beats * 60.0 / self.bpm
+
+    def describe(self) -> tuple[str, str]:
+        if not self.loop_enabled or self.length_beats <= 0:
+            return (
+                "Whole song",
+                "Loop is off in Ableton. Turn on the loop brace around a section to export only that part.",
+            )
+        bars = self.bar_count
+        bar_word = "bar" if bars == 1 else "bars"
+        headline = f"Bars {self.start_bar} to {self.end_bar}"
+        duration = self.duration_seconds
+        if duration is not None:
+            total_seconds = max(0, round(duration))
+            minutes, seconds = divmod(total_seconds, 60)
+            detail = f"{bars} {bar_word}, {minutes}:{seconds:02d} long. Set by the loop brace in Ableton."
+        else:
+            detail = f"{bars} {bar_word}. Set by the loop brace in Ableton."
+        return headline, detail
 
 
 @dataclass(frozen=True)

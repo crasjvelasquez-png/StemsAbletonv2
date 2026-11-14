@@ -154,6 +154,9 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk, sleep=time
             detail = f" Last AppleScript error: {title_errors[-1]}"
         raise ProjectDetectionError(f"Could not read project name from Ableton's window title.{detail}")
 
+    if song_name.lower().startswith("untitled"):
+        raise ProjectDetectionError("This Ableton set hasn't been saved yet.")
+
     # Spotlight can briefly lose a file while Ableton is saving it. Ask a few
     # times before falling back to the slow disk search, which can time out on
     # external drives.
