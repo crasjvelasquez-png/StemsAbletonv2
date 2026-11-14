@@ -208,8 +208,9 @@ def get_stems_folder(
     key: str | None,
     bpm: int | float | None,
     format_string: str | None = None,
+    artist: str | None = None,
 ) -> Path:
-    stems_dir = stems_folder_path(project_folder, song_name, key, bpm, format_string=format_string)
+    stems_dir = stems_folder_path(project_folder, song_name, key, bpm, format_string=format_string, artist=artist)
     stems_dir.mkdir(parents=True, exist_ok=True)
     return stems_dir
 
@@ -220,6 +221,7 @@ def stems_folder_path(
     key: str | None,
     bpm: int | float | None,
     format_string: str | None = None,
+    artist: str | None = None,
 ) -> Path:
-    folder_name = stems_folder_name(song_name, key, bpm, format_string=format_string)
+    folder_name = stems_folder_name(song_name, key, bpm, format_string=format_string, artist=artist)
     return project_folder / folder_name

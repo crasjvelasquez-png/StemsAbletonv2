@@ -716,6 +716,13 @@ class MainWindow(QMainWindow):
         self._apply_placeholder_color(self.key_input)
         self.key_input.textChanged.connect(self.update_destination_preview)
 
+        self.artist_input = QLineEdit()
+        self.artist_input.setObjectName("exportInput")
+        self.artist_input.setPlaceholderText("Optional")
+        self.artist_input.setFixedHeight(int(self.ui_sizes["field_height"]))
+        self._apply_placeholder_color(self.artist_input)
+        self.artist_input.textChanged.connect(self.update_destination_preview)
+
         self.destination_value = QLabel("-")
         self.destination_value.setObjectName("destinationPath")
         self.destination_value.setWordWrap(True)
@@ -728,9 +735,10 @@ class MainWindow(QMainWindow):
 
         project_label = self._build_field_label("Song name")
         key_label = self._build_field_label("Key")
+        artist_label = self._build_field_label("Artist")
         dest_label = self._build_field_label("Saves to")
 
-        self.export_labels = (project_label, key_label, dest_label)
+        self.export_labels = (project_label, key_label, artist_label, dest_label)
         self.destination_control = QWidget()
         self.destination_control.setObjectName("destinationControl")
         destination_layout = QHBoxLayout(self.destination_control)
@@ -741,10 +749,11 @@ class MainWindow(QMainWindow):
         self.export_field_pairs = (
             (project_label, self.project_name_input),
             (key_label, self.key_input),
+            (artist_label, self.artist_input),
             (dest_label, self.destination_control),
         )
         self._export_pair_widgets = tuple(
-            self._wrap_field_pair(label, control, spacing=6 if index < 2 else 4)
+            self._wrap_field_pair(label, control, spacing=6 if index < 3 else 4)
             for index, (label, control) in enumerate(self.export_field_pairs)
         )
         self._arrange_export_fields(compact=False)
@@ -889,19 +898,23 @@ class MainWindow(QMainWindow):
     def _arrange_export_fields(self, compact: bool) -> None:
         for widget in self._export_pair_widgets:
             self.export_options_layout.removeWidget(widget)
-        project_pair, key_pair, dest_pair = self._export_pair_widgets
+        project_pair, key_pair, artist_pair, dest_pair = self._export_pair_widgets
         if compact:
             self.export_options_layout.addWidget(project_pair, 0, 0)
             self.export_options_layout.addWidget(key_pair, 1, 0)
-            self.export_options_layout.addWidget(dest_pair, 2, 0)
+            self.export_options_layout.addWidget(artist_pair, 2, 0)
+            self.export_options_layout.addWidget(dest_pair, 3, 0)
             self.export_options_layout.setColumnStretch(0, 1)
             self.export_options_layout.setColumnStretch(1, 0)
+            self.export_options_layout.setColumnStretch(2, 0)
         else:
             self.export_options_layout.addWidget(project_pair, 0, 0)
             self.export_options_layout.addWidget(key_pair, 0, 1)
-            self.export_options_layout.addWidget(dest_pair, 1, 0, 1, 2)
+            self.export_options_layout.addWidget(artist_pair, 0, 2)
+            self.export_options_layout.addWidget(dest_pair, 1, 0, 1, 3)
             self.export_options_layout.setColumnStretch(0, 1)
             self.export_options_layout.setColumnStretch(1, 1)
+            self.export_options_layout.setColumnStretch(2, 1)
 
     def _set_export_enabled(self, enabled: bool) -> None:
         self.export_button.setEnabled(enabled)
@@ -1040,6 +1053,7 @@ class MainWindow(QMainWindow):
         if previous_project and (previous_project.project_folder, previous_project.song_name) != (project.project_folder, project.song_name):
             self.project_name_input.clear()
             self.key_input.clear()
+            self.artist_input.clear()
         self.song_value.setText(project.song_name)
         self.project_name_input.setPlaceholderText(project.song_name)
         self.bpm_value.setText(f"{project.bpm} BPM" if project.bpm is not None else "Tempo unknown")
@@ -1146,16 +1160,18 @@ class MainWindow(QMainWindow):
         if self.state is None or self.project is None:
             self.destination_value.setText("-")
             self.destination_value.setToolTip("")
-            self._export_pair_widgets[2].setVisible(False)
+            self._export_pair_widgets[3].setVisible(False)
             self._set_open_available(False)
             return
-        self._export_pair_widgets[2].setVisible(True)
+        self._export_pair_widgets[3].setVisible(True)
         tracks = self._selected_tracks()
         custom_song_name = self.project_name_input.text().strip() or None
         key = self.key_input.text().strip() or None
+        artist = self.artist_input.text().strip() or None
         replace_mode = "replace"
         job = self.state.build_export_job(
             key=key,
+            artist=artist,
             replace_mode=replace_mode,
             destination_root=None,
             custom_song_name=custom_song_name,
@@ -1231,6 +1247,7 @@ class MainWindow(QMainWindow):
         self._set_cancel_available(True)
         self.project_name_input.setEnabled(False)
         self.key_input.setEnabled(False)
+        self.artist_input.setEnabled(False)
         self.track_list.setEnabled(False)
         self.preferences_button.setEnabled(False)
 
@@ -1377,6 +1394,7 @@ class MainWindow(QMainWindow):
         self._set_cancel_available(False)
         self.project_name_input.setEnabled(True)
         self.key_input.setEnabled(True)
+        self.artist_input.setEnabled(True)
         self.track_list.setEnabled(True)
         self.preferences_button.setEnabled(True)
         self.update_destination_preview()

@@ -62,6 +62,7 @@ class AppState:
         custom_song_name: str | None = None,
         stem_name_format: str | None = None,
         folder_name_format: str | None = None,
+        artist: str | None = None,
     ) -> ExportJob:
         if self.project is None:
             raise RuntimeError("scan_current_set() must run before build_export_job().")
@@ -73,6 +74,7 @@ class AppState:
         stems_root = self.project.project_folder
         stems_dir = self.stems_folder_getter(
             stems_root, song, key, self.project.bpm, format_string=folder_name_format,
+            artist=artist,
         )
         return ExportJob(
             song_name=self.project.song_name,
@@ -81,6 +83,7 @@ class AppState:
             tracks=self.detected_tracks,
             bpm=self.project.bpm,
             key=key,
+            artist=artist,
             replace_mode=replace_mode,
             custom_song_name=custom_song_name,
             stem_name_format=stem_name_format,

@@ -51,6 +51,7 @@ class ExportReadyState:
         custom_song_name: str | None = None,
         stem_name_format: str | None = None,
         folder_name_format: str | None = None,
+        artist: str | None = None,
     ) -> ExportJob:
         stems_root = Path(destination_root) if destination_root is not None else self.project.project_folder
         return ExportJob(
@@ -60,6 +61,7 @@ class ExportReadyState:
             tracks=self.detected_tracks,
             bpm=self.project.bpm,
             key=key,
+            artist=artist,
             replace_mode=replace_mode,
             custom_song_name=custom_song_name,
             stem_name_format=stem_name_format,

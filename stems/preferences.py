@@ -23,12 +23,14 @@ BUILTIN_STEM_NAMING_PRESETS = (
     NamingPreset("builtin-stem-studio-detail", "Studio Detail", DEFAULT_STEM_NAME_FORMAT),
     NamingPreset("builtin-stem-compact", "Compact", "{song}_{track}.wav"),
     NamingPreset("builtin-stem-numbered", "Numbered", "{index}_{track}_{song}.wav"),
+    NamingPreset("builtin-stem-artist", "Artist first", "{artist} - {song} - {track}.wav"),
 )
 
 BUILTIN_FOLDER_NAMING_PRESETS = (
     NamingPreset("builtin-folder-studio-detail", "Studio Detail", DEFAULT_FOLDER_NAME_FORMAT),
     NamingPreset("builtin-folder-compact", "Compact", "{song} - Stems"),
     NamingPreset("builtin-folder-dated", "Dated", "{song} - {date} - Stems"),
+    NamingPreset("builtin-folder-artist", "Artist first", "{artist} - {song} - Stems"),
 )
 
 
@@ -53,9 +55,12 @@ class PreferencesStore:
         data = json.loads(self.path.read_text())
         # Ignore retired settings, including clipboard, destination and history.
         data = {key: value for key, value in data.items() if key in Preferences.__dataclass_fields__}
-        for key, presets in (("stem_name_format", BUILTIN_STEM_NAMING_PRESETS),
-                             ("folder_name_format", BUILTIN_FOLDER_NAMING_PRESETS)):
-            if data.get(key) not in {preset.format_string for preset in presets}:
+        from .naming import validate_name_format
+
+        for key, kind, presets in (("stem_name_format", "stem", BUILTIN_STEM_NAMING_PRESETS),
+                                   ("folder_name_format", "folder", BUILTIN_FOLDER_NAMING_PRESETS)):
+            value = data.get(key)
+            if not isinstance(value, str) or validate_name_format(value, kind) is not None:
                 data[key] = presets[0].format_string
         return Preferences(**data)
 

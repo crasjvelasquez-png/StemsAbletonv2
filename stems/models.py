@@ -92,6 +92,7 @@ class ExportJob:
     tracks: list[StemTrack]
     bpm: int | float | None = None
     key: str | None = None
+    artist: str | None = None
     replace_mode: ReplaceMode = "replace"
     custom_song_name: str | None = None
     stem_name_format: str | None = None

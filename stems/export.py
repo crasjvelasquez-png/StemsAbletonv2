@@ -269,6 +269,7 @@ def execute_export_job(
                 bpm=job.bpm,
                 index=position,
                 format_string=job.stem_name_format,
+                artist=job.artist,
             )
             callback("stem", f"{position}/{len(tracks)} {track.name}")
 
