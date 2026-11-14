@@ -82,12 +82,25 @@ QLabel#appTitle {{
     font-weight: 600;
 }}
 
+QLabel#dialogTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 18px;
+    font-weight: 600;
+}}
+
 /* Product surfaces */
 QWidget#card,
 QWidget#currentSetSection,
 QWidget#progressCard {{
     background-color: transparent;
     border: none;
+}}
+
+QWidget#preferencesPreviewCard {{
+    background-color: {DESIGN_TOKENS["panel"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    border-radius: {DESIGN_TOKENS["radius_panel"]};
 }}
 
 QWidget#footerDock {{
@@ -105,6 +118,22 @@ QLabel#muted {{
     color: {DESIGN_TOKENS["text_muted"]};
     font-size: 12px;
     font-weight: 400;
+}}
+
+QLabel#preferencesPreviewText {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-family: "Menlo", monospace;
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#preferencesSavedLabel,
+QLabel[saveState="saved"] {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-family: "Menlo", monospace;
+    font-size: 12px;
+    font-weight: 400;
+    padding-right: 4px;
 }}
 
 QLabel#destinationPath {{
