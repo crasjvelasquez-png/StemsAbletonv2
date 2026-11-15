@@ -198,11 +198,35 @@ QLabel[saveState="saved"] {{
     padding-right: 4px;
 }}
 
-QLabel#destinationPath {{
+QLabel#pathTrailName {{
     color: {DESIGN_TOKENS["text_muted"]};
-    font-family: "Menlo", monospace;
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QLabel#pathTrailLast {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 13px;
+    font-weight: 600;
+}}
+
+QLabel#pathTrailChevron {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 7px;
+    padding: 0 3px;
+}}
+
+QLabel#pathTrailEmpty {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QLabel#pathTrailNote {{
+    color: {DESIGN_TOKENS["text_faint"]};
     font-size: 12px;
     font-weight: 400;
+    padding-left: 6px;
 }}
 
 QLabel#currentSetValue {{

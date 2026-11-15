@@ -2,7 +2,7 @@
   "clean_export": {
     "title": "Export 2 stems?",
     "range": "Bars 8 to 71 \u00b7 64 bars \u00b7 2:45",
-    "folder": "<span style=\"color: #f5f5f7\">\ud83d\udcc1&nbsp;private <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;var <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;folders <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;7_ <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;c00h140d21lck3p67g817xh00000gn <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;T <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;pytest-of-c4milo <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;pytest-52 <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;test_export_confirm_dialog_con0 <span style=\"color: #6e6e73\">&rarr;</span> \ud83d\udcc1&nbsp;Test&nbsp;Song&nbsp;-&nbsp;November&nbsp;14&nbsp;2026&nbsp;-&nbsp;Stems&nbsp;-&nbsp;93&nbsp;BPM</span>",
+    "folder": "private \u203a var \u203a folders \u203a 7_ \u203a c00h140d21lck3p67g817xh00000gn \u203a T \u203a pytest-of-c4milo \u203a pytest-57 \u203a test_export_confirm_dialog_con0 \u203a Test Song - Stems - 93",
     "folder_tooltip_has_parent": true,
     "conflict_hidden": true,
     "buttons": [

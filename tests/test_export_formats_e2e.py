@@ -95,7 +95,7 @@ def test_export_formats_existing_files_and_failures(tmp_path, monkeypatch):
     project.mkdir()
     (project / "Song.als").write_bytes(b"")
     # A stems folder from an earlier day already sits in the project.
-    old_folder = project / "Song - March 01 2026 - Stems - C Major 120 BPM"
+    old_folder = project / "Song - Stems - C Major 120"
     old_folder.mkdir()
     report = {}
 

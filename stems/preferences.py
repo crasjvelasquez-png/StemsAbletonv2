@@ -16,9 +16,9 @@ class NamingPreset:
     format_string: str
 
 
-DEFAULT_STEM_NAME_FORMAT = "{song}_{track} - {key} {bpm} BPM"
+DEFAULT_STEM_NAME_FORMAT = "{song}_{track}"
 REPLACE_MODES = ("ask", "replace", "keep", "keep_both")
-DEFAULT_FOLDER_NAME_FORMAT = "{song} - {date} - Stems - {key} {bpm} BPM"
+DEFAULT_FOLDER_NAME_FORMAT = "{artist} - {song} - Stems - {key} {bpm}"
 
 BUILTIN_STEM_NAMING_PRESETS = (
     NamingPreset("builtin-stem-studio-detail", "Studio Detail", DEFAULT_STEM_NAME_FORMAT),

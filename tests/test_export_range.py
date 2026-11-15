@@ -412,9 +412,9 @@ def test_main_window_displays_range_banner_handles_failure_and_confirms_range(qt
         assert dialog.title_label.text() == "Export 2 stems?"
         assert "Bars 17 to 48" not in dialog.title_label.text()
         assert dialog.range_value.text() == "Bars 17 to 48 · 32 bars · 1:04"
-        assert window.current_job.stems_dir.name.replace(" ", "&nbsp;") in dialog.folder_value.text()
-        assert "\U0001F4C1" in dialog.folder_value.text()
-        assert "/" not in dialog.folder_value.text().replace("</span>", "").replace("<span", "")
+        assert window.current_job.stems_dir.name in dialog.folder_value.text()
+        assert " › " in dialog.folder_value.text()
+        assert "/" not in dialog.folder_value.text()
         assert dialog.folder_value.toolTip() == str(window.current_job.stems_dir)
         assert dialog.conflict_label.isHidden() is True
         assert scan_called == []
@@ -561,7 +561,7 @@ def test_export_confirm_dialog_conflict_modes_and_artifact_e2e(tmp_path, monkeyp
         assert len(captured) == 1
         assert captured[0]["title"] == "Export 2 stems?"
         assert captured[0]["range"] == "Bars 8 to 71 · 64 bars · 2:45"
-        assert window.current_job.stems_dir.name.replace(" ", "&nbsp;") in captured[0]["folder"]
+        assert window.current_job.stems_dir.name in captured[0]["folder"]
         assert captured[0]["folder_tooltip_has_parent"] is True
         assert captured[0]["conflict_hidden"] is True
         assert captured[0]["buttons"] == ["Cancel", "Export"]

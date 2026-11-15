@@ -55,6 +55,7 @@ except ImportError as exc:
     raise SystemExit("PySide6 is not installed. Run: pip install PySide6") from exc
 
 from ..login_item import is_launch_agent_installed, remove_launch_agent
+from .path_trail import PathTrail
 from .preferences_dialog import PreferencesDialog
 from .theme import CLIP_COLORS, DESIGN_TOKENS, stylesheet_for_scale
 from .worker import ExportWorker, ScanWorker
@@ -163,23 +164,6 @@ def _relative_luminance(color: QColor) -> float:
     )
 
 
-
-def folder_breadcrumb_html(path, *, color: str = "#a1a1a6") -> str:
-    """Friendly folder trail: 📁 Folder → 📁 Folder, no slashes."""
-    from pathlib import Path as _P
-
-    p = _P(path)
-    parts = [x for x in p.parts if x not in ("/", "")]
-    home = _P.home().parts
-    if len(parts) >= len(home) - 1 and tuple(parts[: len(home) - 1]) == tuple(home[1:]):
-        parts = ["Home"] + parts[len(home) - 1 :]
-    elif parts and parts[0] == "Volumes":
-        parts = parts[1:]
-    if not parts:
-        parts = [str(path)]
-    sep = f' <span style="color: #6e6e73">&rarr;</span> '
-    items = sep.join(f"\U0001F4C1&nbsp;{html.escape(x).replace(' ', '&nbsp;')}" for x in parts)
-    return f'<span style="color: {color}">{items}</span>'
 
 class StemTrackRow(QWidget):
     def __init__(
@@ -570,12 +554,9 @@ class ExportConfirmDialog(QDialog):
         self.folder_label.setObjectName("exportConfirmLabel")
         self.folder_label.setFixedWidth(52)
         self.folder_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.folder_value = QLabel(folder_breadcrumb_html(stems_dir, color="#f5f5f7"))
-        self.folder_value.setTextFormat(Qt.RichText)
-        self.folder_value.setObjectName("exportConfirmValue")
-        self.folder_value.setWordWrap(True)
+        self.folder_value = PathTrail()
+        self.folder_value.setPath(stems_dir)
         self.folder_value.setToolTip(str(stems_dir))
-        self.folder_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.folder_value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         folder_row.addWidget(self.folder_label)
         folder_row.addWidget(self.folder_value, 1)
@@ -927,15 +908,8 @@ class MainWindow(QMainWindow):
         self._apply_placeholder_color(self.artist_input)
         self.artist_input.textChanged.connect(self.update_destination_preview)
 
-        self.destination_value = QLabel("-")
-        self.destination_value.setObjectName("destinationPath")
-        self.destination_value.setWordWrap(True)
-        self.destination_value.setMinimumWidth(0)
-        self.destination_value.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.destination_value.setFocusPolicy(Qt.StrongFocus)
-        self.destination_value.setTextFormat(Qt.RichText)
-        self.destination_value.setTextInteractionFlags(Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
-        self.destination_value.linkActivated.connect(self.open_export_folder)
+        self.destination_value = PathTrail()
+        self.destination_value.clicked.connect(self.open_export_folder)
 
         project_label = self._build_field_label("Song name")
         key_label = self._build_field_label("Key")
@@ -1385,14 +1359,9 @@ class MainWindow(QMainWindow):
             folder_name_format=self.preferences.folder_name_format,
         )
         self.current_job = replace(job, tracks=tracks)
-        existing_note = (
-            ' <span style="color: #6e6e73">· existing folder</span>'
-            if self.current_job.stems_dir.is_dir()
-            else ""
-        )
-        self.destination_value.setText(
-            f'<a href="open" style="text-decoration: none">{folder_breadcrumb_html(self.current_job.stems_dir)}</a>'
-            f"{existing_note}"
+        self.destination_value.setPath(
+            self.current_job.stems_dir,
+            existing=self.current_job.stems_dir.is_dir(),
         )
         self.destination_value.setToolTip(str(self.current_job.stems_dir))
         self._set_export_enabled(

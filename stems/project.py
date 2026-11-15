@@ -243,8 +243,8 @@ def find_existing_stems_folder(
 ) -> Path | None:
     """Reuse a stems folder already inside the project folder.
 
-    Order: same naming format from another day, then any folder with both the
-    song name and "stem" in its name, then a plain "Stems" folder.
+    Only a folder matching the same naming format (date may differ) is reused,
+    so a typed song, artist or key always gets its own folder.
     """
     try:
         folders = [
@@ -269,15 +269,11 @@ def find_existing_stems_folder(
     pattern = re.compile(
         "^" + re.escape(template).replace(re.escape(marker), ".+") + "$", re.IGNORECASE
     )
-    song = song_name.casefold()
-
     def newest(candidates: list[Path]) -> Path | None:
         if not candidates:
             return None
         return max(candidates, key=lambda path: path.stat().st_mtime)
 
-    return (
-        newest([f for f in folders if pattern.match(f.name)])
-        or newest([f for f in folders if song and song in f.name.casefold()])
-        or newest([f for f in folders if f.name.casefold() in {"stems", "stem"}])
-    )
+    # Only reuse a folder that matches the current song/artist/key/BPM; a loose
+    # match would ignore what the user typed.
+    return newest([f for f in folders if pattern.match(f.name)])
