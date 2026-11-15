@@ -10,6 +10,14 @@ _CHECK_PATH = (_ASSET_ROOT / "assets/ui/check.svg").as_posix()
 
 CLIP_COLORS = ("#ff5a5c", "#55c7f2", "#9483f2", "#ffd23f")
 
+DURATION_TWEEN = 140
+DURATION_FAST = 150
+DURATION_DIALOG = 160
+DURATION_REBUILD = 180
+DURATION_BASE = 200
+DURATION_SUCCESS = 220
+SCAN_COMPLETE_HOLD_MS = 1200
+
 DESIGN_TOKENS = {
     "background": "#141415",
     "panel": "#1b1b1d",

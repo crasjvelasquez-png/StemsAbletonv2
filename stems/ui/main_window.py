@@ -16,7 +16,7 @@ from ..preferences import Preferences, PreferencesStore
 from ..state import AppState
 
 try:
-    from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, QThread, QTimer, Qt
+    from PySide6.QtCore import QEvent, QPointF, QRectF, QSignalBlocker, QSize, QThread, QTimer, Qt, Signal
     from PySide6.QtGui import (
         QColor,
         QFont,
@@ -36,6 +36,7 @@ try:
         QCheckBox,
         QDialog,
         QFrame,
+        QGraphicsOpacityEffect,
         QGridLayout,
         QHBoxLayout,
         QLabel,
@@ -55,9 +56,31 @@ except ImportError as exc:
     raise SystemExit("PySide6 is not installed. Run: pip install PySide6") from exc
 
 from ..login_item import is_launch_agent_installed, remove_launch_agent
+from .motion import (
+    ColorTween,
+    FloatTween,
+    effective_duration,
+    fade_widget,
+    fade_window_opacity,
+    lerp_color,
+    parse_css_color,
+    stop_fade_widget,
+    stop_window_fade,
+)
 from .path_trail import PathTrail
 from .preferences_dialog import PreferencesDialog
-from .theme import CLIP_COLORS, DESIGN_TOKENS, stylesheet_for_scale
+from .theme import (
+    CLIP_COLORS,
+    DESIGN_TOKENS,
+    DURATION_BASE,
+    DURATION_DIALOG,
+    DURATION_FAST,
+    DURATION_REBUILD,
+    DURATION_SUCCESS,
+    DURATION_TWEEN,
+    SCAN_COMPLETE_HOLD_MS,
+    stylesheet_for_scale,
+)
 from .worker import ExportWorker, ScanWorker
 
 
@@ -184,14 +207,11 @@ class StemTrackRow(QWidget):
 
         self._track_name = track.name
         self._display_index = display_index
-        self._clip_color = (
-            QColor.fromRgb(track.color)
-            if track.color is not None
-            else QColor(CLIP_COLORS[(display_index - 1) % len(CLIP_COLORS)])
-        )
+        self._clip_color = self._resolve_clip_color(track, display_index)
         self._clip_luminance = _relative_luminance(self._clip_color)
         self._ink_on_clip = QColor("#141415" if self._clip_luminance > 0.179 else "#f4f4f5")
         self._hovered = False
+        self._animating = False
         self._lane_height = int(sizes["stem_lane_height"])
         self._lane_gap = int(sizes["stem_lane_gap"])
         self._tab_width = int(sizes["stem_tab_width"])
@@ -199,6 +219,19 @@ class StemTrackRow(QWidget):
         self._anim_timer = QTimer(self)
         self._anim_timer.setInterval(33)
         self._anim_timer.timeout.connect(self._advance_animation)
+
+        self._hover_color = ColorTween(
+            self,
+            parse_css_color(DESIGN_TOKENS["panel"]),
+            lambda _color: self.update(),
+        )
+        self._check_mix = FloatTween(
+            self,
+            1.0 if track.selected else 0.0,
+            lambda _value: self.update(),
+        )
+        self._success_mix = FloatTween(self, 0.0, lambda _value: self.update())
+        self._hatch_alpha = FloatTween(self, 0.0, lambda _value: self.update())
 
         self.checkbox = QCheckBox(self)
         self.checkbox.setObjectName("stemRowCheckbox")
@@ -224,6 +257,59 @@ class StemTrackRow(QWidget):
 
         self.apply_sizes(sizes)
 
+    @staticmethod
+    def _resolve_clip_color(track: StemTrack, display_index: int) -> QColor:
+        return (
+            QColor.fromRgb(track.color)
+            if track.color is not None
+            else QColor(CLIP_COLORS[(display_index - 1) % len(CLIP_COLORS)])
+        )
+
+    def update_track(
+        self,
+        track: StemTrack,
+        display_index: int,
+        *,
+        sizes: dict[str, int | tuple[int, ...]] | None = None,
+    ) -> None:
+        self._display_index = display_index
+        self._clip_color = self._resolve_clip_color(track, display_index)
+        self._clip_luminance = _relative_luminance(self._clip_color)
+        self._ink_on_clip = QColor("#141415" if self._clip_luminance > 0.179 else "#f4f4f5")
+        self.status_label.setStyleSheet(
+            f'QLabel#stemRowStatus[statusState="success"] {{ color: {self._ink_on_clip.name()}; }}'
+        )
+        if sizes is not None:
+            self.apply_sizes(sizes)
+        with QSignalBlocker(self.checkbox):
+            self.checkbox.setChecked(track.selected)
+        self.checkbox.setToolTip(f"Export {track.name}")
+        self.checkbox.setAccessibleName(self.checkbox.toolTip())
+        self._check_mix.snap_to(1.0 if track.selected else 0.0)
+        self.reset_status()
+        self.update()
+
+    def set_checked_immediate(self, checked: bool) -> None:
+        self.checkbox.setChecked(checked)
+        self._check_mix.snap_to(1.0 if checked else 0.0)
+        self.update()
+
+    def fade_in(self, duration_ms: int = DURATION_REBUILD) -> None:
+        if not self.isVisible():
+            return
+        fade_widget(
+            self,
+            1.0,
+            duration_ms,
+            start_opacity=0.0,
+            clear_effect_on_finish=True,
+        )
+
+    def clear_fade_effect(self) -> None:
+        stop_fade_widget(self)
+        if self.graphicsEffect() is not None:
+            self.setGraphicsEffect(None)
+
     def apply_sizes(self, sizes: dict[str, int | tuple[int, ...]]) -> None:
         self._lane_height = int(sizes["stem_lane_height"])
         self._lane_gap = int(sizes["stem_lane_gap"])
@@ -233,42 +319,141 @@ class StemTrackRow(QWidget):
         self.setMaximumHeight(row_height)
         self.row_layout.setContentsMargins(0, 0, 16, self._lane_gap)
 
-    def _on_checkbox_toggled(self, _checked: bool) -> None:
+    def _on_checkbox_toggled(self, checked: bool) -> None:
+        self._check_mix.animate_to(
+            1.0 if checked else 0.0,
+            DURATION_TWEEN,
+            animate=self.isVisible(),
+        )
         self.update()
 
+    def _update_hover_target(self) -> None:
+        hovered_active = self._hovered and self.isEnabled()
+        target = parse_css_color(
+            DESIGN_TOKENS["panel_hover"] if hovered_active else DESIGN_TOKENS["panel"]
+        )
+        self._hover_color.animate_to(
+            target,
+            DURATION_TWEEN,
+            animate=self.isVisible(),
+        )
+
     def set_animating(self, active: bool) -> None:
+        self._animating = active
         if active:
-            if not self._anim_timer.isActive():
-                self._anim_timer.start()
+            if self.isVisible():
+                if not self._anim_timer.isActive():
+                    self._anim_timer.start()
+                self._hatch_alpha.animate_to(1.0, DURATION_FAST, animate=True)
+            else:
+                self._hatch_alpha.snap_to(1.0)
         else:
-            if self._anim_timer.isActive():
+            if self.isVisible() and effective_duration(DURATION_FAST) > 0:
+                def _stop_hatch_timer() -> None:
+                    if not self._animating:
+                        self._anim_timer.stop()
+                        self._hatch_phase = 0.0
+                        self.update()
+
+                self._hatch_alpha.animate_to(
+                    0.0,
+                    DURATION_FAST,
+                    animate=True,
+                    on_finished=_stop_hatch_timer,
+                )
+            else:
                 self._anim_timer.stop()
-            self._hatch_phase = 0.0
+                self._hatch_phase = 0.0
+                self._hatch_alpha.snap_to(0.0)
         self.update()
+
+    def set_status_state(self, status: str, *, was_hidden: bool) -> None:
+        self.clear_fade_effect()
+        if status == "success":
+            self._success_mix.animate_to(1.0, DURATION_SUCCESS, animate=self.isVisible())
+            fade_widget(
+                self.status_label,
+                1.0,
+                DURATION_SUCCESS,
+                start_opacity=0.0,
+                animate=self.isVisible(),
+            )
+        else:
+            self._success_mix.animate_to(0.0, DURATION_FAST, animate=self.isVisible())
+            if was_hidden:
+                fade_widget(
+                    self.status_label,
+                    1.0,
+                    DURATION_FAST,
+                    start_opacity=0.0,
+                    animate=self.isVisible(),
+                )
+            else:
+                fade_widget(self.status_label, 1.0, 0, animate=False)
+        self.set_animating(status in {"exporting", "retrying"})
+
+    def reset_status(self) -> None:
+        self._animating = False
+        self._anim_timer.stop()
+        self._hatch_phase = 0.0
+        self._hatch_alpha.snap_to(0.0)
+        self._success_mix.snap_to(0.0)
+        stop_fade_widget(self.status_label)
+        if self.status_label.graphicsEffect() is not None:
+            self.status_label.setGraphicsEffect(None)
+        self.status_label.setText("")
+        self.status_label.setToolTip("")
+        self.status_label.setProperty("statusState", "detected")
+        self.status_label.hide()
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+
+    def stop_animations(self) -> None:
+        self._anim_timer.stop()
+        self._hatch_phase = 0.0
+        self._hatch_alpha.stop_and_snap()
+        self._success_mix.stop_and_snap()
+        self._hover_color.stop_and_snap()
+        self._check_mix.stop_and_snap()
+        stop_fade_widget(self.status_label)
+        eff = self.status_label.graphicsEffect()
+        if isinstance(eff, QGraphicsOpacityEffect):
+            eff.setOpacity(1.0)
+        self.clear_fade_effect()
 
     def _advance_animation(self) -> None:
         self._hatch_phase = (self._hatch_phase + 0.8) % 20.0
         self.update()
 
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        super().showEvent(event)
+        if self._animating and not self._anim_timer.isActive():
+            self._anim_timer.start()
+
     def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
-        self._anim_timer.stop()
+        self.stop_animations()
         super().hideEvent(event)
+
+    def changeEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        if event.type() == QEvent.EnabledChange:
+            self._update_hover_target()
+        super().changeEvent(event)
 
     def enterEvent(self, event) -> None:  # noqa: N802 - Qt override name
         self._hovered = event.position().y() <= self._lane_height
-        self.update()
+        self._update_hover_target()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:  # noqa: N802 - Qt override name
         self._hovered = False
-        self.update()
+        self._update_hover_target()
         super().leaveEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt override name
         hovered = event.position().y() <= self._lane_height
         if hovered != self._hovered:
             self._hovered = hovered
-            self.update()
+            self._update_hover_target()
         super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override name
@@ -302,60 +487,48 @@ class StemTrackRow(QWidget):
         lane_path.addRoundedRect(lane_rect, radius, radius)
 
         status = self.status_label.property("statusState") or "detected"
-        checked = self.checkbox.isChecked()
         very_dark_clip = self._clip_luminance < 0.06
+        success_t = self._success_mix.value
+        check_t = self._check_mix.value
+        hatch_t = self._hatch_alpha.value
+        base_bg = self._hover_color.value
 
         painter.save()
         painter.setClipPath(lane_path)
 
         # Lane background
-        if status == "success":
-            painter.fillRect(lane_rect, self._clip_color)
-            if very_dark_clip:
-                outline_rect = QRectF(0.5, 0.5, lane_w - 1.0, lane_h - 1.0)
-                painter.setPen(QPen(QColor.fromRgbF(1.0, 1.0, 1.0, 0.18), 1.0))
-                painter.setBrush(Qt.NoBrush)
-                painter.drawRoundedRect(outline_rect, radius - 0.5, radius - 0.5)
-        else:
-            bg = QColor(DESIGN_TOKENS["panel_hover"] if (self._hovered and self.isEnabled()) else DESIGN_TOKENS["panel"])
-            painter.fillRect(lane_rect, bg)
-            if status in {"exporting", "retrying"}:
-                painter.save()
-                painter.setPen(Qt.NoPen)
-                hatch = QColor(self._clip_color)
-                base_alpha = 0.55 if very_dark_clip else 0.30
-                pulse = 0.75 + 0.25 * math.sin(2.0 * math.pi * time.monotonic() / 1.6)
-                hatch.setAlphaF(base_alpha * pulse)
-                painter.setBrush(hatch)
-                painter.rotate(-45)
-                diag = int(lane_w + lane_h) + 40
-                for x in range(-diag, diag, 20):
-                    painter.drawRect(
-                        QRectF(float(x) + self._hatch_phase, float(-diag), 10.0, float(diag * 2))
-                    )
-                painter.restore()
+        lane_bg = (
+            lerp_color(base_bg, self._clip_color, success_t)
+            if success_t > 0.001
+            else base_bg
+        )
+        painter.fillRect(lane_rect, lane_bg)
+
+        if hatch_t > 0.001 and success_t < 0.999:
+            painter.save()
+            painter.setPen(Qt.NoPen)
+            hatch = QColor(self._clip_color)
+            base_alpha = 0.55 if very_dark_clip else 0.30
+            pulse = 0.75 + 0.25 * math.sin(2.0 * math.pi * time.monotonic() / 1.6)
+            hatch.setAlphaF(base_alpha * pulse * hatch_t * (1.0 - success_t))
+            painter.setBrush(hatch)
+            painter.rotate(-45)
+            diag = int(lane_w + lane_h) + 40
+            for x in range(-diag, diag, 20):
+                painter.drawRect(
+                    QRectF(float(x) + self._hatch_phase, float(-diag), 10.0, float(diag * 2))
+                )
+            painter.restore()
+
+        if very_dark_clip and success_t > 0.001:
+            outline_rect = QRectF(0.5, 0.5, lane_w - 1.0, lane_h - 1.0)
+            painter.setPen(QPen(QColor.fromRgbF(1.0, 1.0, 1.0, 0.18 * success_t), 1.0))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(outline_rect, radius - 0.5, radius - 0.5)
 
         # Left tab
         tab_rect = QRectF(0.0, 0.0, tab_w, lane_h)
-        if checked:
-            painter.fillRect(tab_rect, self._clip_color)
-            if very_dark_clip and status != "success":
-                inset = 0.5
-                t_rect = QRectF(inset, inset, tab_w - 2.0 * inset, lane_h - 2.0 * inset)
-                r = max(0.0, radius - inset)
-                tab_path = QPainterPath()
-                tab_path.moveTo(t_rect.right(), t_rect.top())
-                tab_path.lineTo(t_rect.left() + r, t_rect.top())
-                tab_path.quadTo(t_rect.left(), t_rect.top(), t_rect.left(), t_rect.top() + r)
-                tab_path.lineTo(t_rect.left(), t_rect.bottom() - r)
-                tab_path.quadTo(t_rect.left(), t_rect.bottom(), t_rect.left() + r, t_rect.bottom())
-                tab_path.lineTo(t_rect.right(), t_rect.bottom())
-                tab_path.closeSubpath()
-                painter.setPen(QPen(QColor.fromRgbF(1.0, 1.0, 1.0, 0.18), 1.0))
-                painter.setBrush(Qt.NoBrush)
-                painter.drawPath(tab_path)
-            idx_color = QColor(self._ink_on_clip)
-        else:
+        if check_t < 0.999:
             inset = 0.75
             t_rect = QRectF(inset, inset, tab_w - inset, lane_h - 2.0 * inset)
             r = max(0.0, radius - inset)
@@ -367,11 +540,35 @@ class StemTrackRow(QWidget):
             tab_path.quadTo(t_rect.left(), t_rect.bottom(), t_rect.left() + r, t_rect.bottom())
             tab_path.lineTo(t_rect.right(), t_rect.bottom())
             tab_path.closeSubpath()
-            painter.setPen(QPen(QColor("#343437"), 1.5))
+            border_color = QColor("#343437")
+            border_color.setAlphaF(1.0 - check_t)
+            painter.setPen(QPen(border_color, 1.5))
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(tab_path)
-            idx_color = QColor("#85858b")
 
+        if check_t > 0.001:
+            tab_fill = QColor(self._clip_color)
+            tab_fill.setAlphaF(check_t)
+            painter.fillRect(tab_rect, tab_fill)
+            if very_dark_clip and success_t < 0.999:
+                inset = 0.5
+                t_rect = QRectF(inset, inset, tab_w - 2.0 * inset, lane_h - 2.0 * inset)
+                r = max(0.0, radius - inset)
+                tab_path = QPainterPath()
+                tab_path.moveTo(t_rect.right(), t_rect.top())
+                tab_path.lineTo(t_rect.left() + r, t_rect.top())
+                tab_path.quadTo(t_rect.left(), t_rect.top(), t_rect.left(), t_rect.top() + r)
+                tab_path.lineTo(t_rect.left(), t_rect.bottom() - r)
+                tab_path.quadTo(t_rect.left(), t_rect.bottom(), t_rect.left() + r, t_rect.bottom())
+                tab_path.lineTo(t_rect.right(), t_rect.bottom())
+                tab_path.closeSubpath()
+                painter.setPen(
+                    QPen(QColor.fromRgbF(1.0, 1.0, 1.0, 0.18 * check_t * (1.0 - success_t)), 1.0)
+                )
+                painter.setBrush(Qt.NoBrush)
+                painter.drawPath(tab_path)
+
+        idx_color = lerp_color(QColor("#85858b"), self._ink_on_clip, check_t)
         idx_font = QFont()
         idx_font.setFamilies(["Menlo", "monospace"])
         idx_font.setPixelSize(12)
@@ -386,12 +583,8 @@ class StemTrackRow(QWidget):
         name_font.setPixelSize(14)
         name_font.setWeight(QFont.Medium)
         painter.setFont(name_font)
-        if status == "success":
-            name_color = QColor(self._ink_on_clip)
-        elif not checked:
-            name_color = QColor("#85858b")
-        else:
-            name_color = QColor("#ededed")
+        base_name_color = lerp_color(QColor("#85858b"), QColor("#ededed"), check_t)
+        name_color = lerp_color(base_name_color, self._ink_on_clip, success_t)
         name_left = tab_w + 16.0
         right_reserved = (self.status_label.sizeHint().width() + 28.0) if self.status_label.isVisible() else 16.0
         avail_w = max(0, int(lane_w - name_left - right_reserved))
@@ -431,13 +624,28 @@ class RangeRuler(QWidget):
         self.start_bar = start_bar
         self.end_bar = end_bar
         self.total_bars = max(1, total_bars)
+        self._display_start = FloatTween(self, float(start_bar), lambda _v: self.update())
+        self._display_end = FloatTween(self, float(end_bar), lambda _v: self.update())
         self.setFixedHeight(40)
 
     def set_range(self, start_bar: int, end_bar: int, total_bars: int) -> None:
+        range_changed = start_bar != self.start_bar or end_bar != self.end_bar
         self.start_bar = start_bar
         self.end_bar = end_bar
         self.total_bars = max(1, total_bars)
+        if range_changed:
+            animate = self.isVisible()
+            self._display_start.animate_to(float(start_bar), DURATION_BASE, animate=animate)
+            self._display_end.animate_to(float(end_bar), DURATION_BASE, animate=animate)
         self.update()
+
+    def stop_animations(self) -> None:
+        self._display_start.stop_and_snap()
+        self._display_end.stop_and_snap()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        self.stop_animations()
+        super().hideEvent(event)
 
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt override name
         painter = QPainter(self)
@@ -450,17 +658,17 @@ class RangeRuler(QWidget):
 
         y = 8
 
-        def bar_x(bar: int) -> float:
-            return (bar - 1) / total * w
+        def bar_x(bar: float) -> float:
+            return (bar - 1.0) / total * w
 
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor("#2a2a2d"))
         painter.drawRoundedRect(QRectF(0, y, w, 8), 4, 4)
 
-        start = max(1, min(self.start_bar, total))
-        end = max(start, min(self.end_bar, total))
+        start = max(1.0, min(self._display_start.value, float(total)))
+        end = max(start, min(self._display_end.value, float(total)))
         x_start = bar_x(start)
-        x_end = bar_x(end + 1)
+        x_end = bar_x(end + 1.0)
         highlight_w = max(2.0, min(float(w) - x_start, x_end - x_start))
         painter.setBrush(QColor(DESIGN_TOKENS["text"]))
         painter.drawRoundedRect(QRectF(x_start, y, highlight_w, 8), 4, 4)
@@ -481,6 +689,73 @@ class RangeRuler(QWidget):
                 painter.setPen(faint_color)
                 painter.drawText(tick_x + 4, y + 31, label)
 
+        painter.end()
+
+
+class SmoothProgressBar(QProgressBar):
+    displayRatioChanged = Signal(float)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._display_ratio = FloatTween(self, 0.0, self._on_ratio_changed)
+        self._track_color = parse_css_color(DESIGN_TOKENS["border"])
+        self._chunk_color = QColor(DESIGN_TOKENS["accent"])
+
+    @property
+    def display_ratio(self) -> float:
+        return self._display_ratio.value
+
+    def _target_ratio(self) -> float:
+        span = self.maximum() - self.minimum()
+        if span <= 0:
+            return 0.0
+        return max(0.0, min(1.0, (self.value() - self.minimum()) / span))
+
+    def _sync_display_ratio(self) -> None:
+        target = self._target_ratio()
+        should_animate = (
+            self.isVisible()
+            and effective_duration(DURATION_BASE) > 0
+            and target >= self._display_ratio.value
+        )
+        self._display_ratio.animate_to(target, DURATION_BASE, animate=should_animate)
+
+    def _on_ratio_changed(self, ratio: float) -> None:
+        self.update()
+        self.displayRatioChanged.emit(ratio)
+
+    def setValue(self, value: int) -> None:
+        super().setValue(value)
+        self._sync_display_ratio()
+
+    def setRange(self, minimum: int, maximum: int) -> None:
+        super().setRange(minimum, maximum)
+        self._sync_display_ratio()
+
+    def setMinimum(self, minimum: int) -> None:
+        super().setMinimum(minimum)
+        self._sync_display_ratio()
+
+    def setMaximum(self, maximum: int) -> None:
+        super().setMaximum(maximum)
+        self._sync_display_ratio()
+
+    def stop_animations(self) -> None:
+        self._display_ratio.stop_and_snap()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        self.stop_animations()
+        super().hideEvent(event)
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt override name
+        painter = QPainter(self)
+        w = float(self.width())
+        h = float(self.height())
+        if w > 0 and h > 0:
+            painter.fillRect(QRectF(0.0, 0.0, w, h), self._track_color)
+            fill_w = max(0.0, min(w, w * self._display_ratio.value))
+            if fill_w > 0.0:
+                painter.fillRect(QRectF(0.0, 0.0, fill_w, h), self._chunk_color)
         painter.end()
 
 
@@ -635,6 +910,18 @@ class ExportConfirmDialog(QDialog):
     def _choose(self, mode: str) -> None:
         self.chosen_mode = mode
         self.accept()
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        super().showEvent(event)
+        if effective_duration(DURATION_DIALOG) > 0:
+            fade_window_opacity(self, 1.0, DURATION_DIALOG, start_opacity=0.0)
+        else:
+            self.setWindowOpacity(1.0)
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        stop_window_fade(self)
+        self.setWindowOpacity(1.0)
+        super().hideEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -957,7 +1244,19 @@ class MainWindow(QMainWindow):
         section = QWidget()
         section.setObjectName("progressCard")
         section.setAttribute(Qt.WA_StyledBackground, True)
+        policy = section.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        section.setSizePolicy(policy)
         self.progress_card = section
+
+        self._progress_opacity = QGraphicsOpacityEffect(section)
+        self._progress_opacity.setOpacity(0.0)
+        section.setGraphicsEffect(self._progress_opacity)
+        self._progress_state = "idle"
+        self._scan_complete_timer = QTimer(self)
+        self._scan_complete_timer.setSingleShot(True)
+        self._scan_complete_timer.setInterval(SCAN_COMPLETE_HOLD_MS)
+        self._scan_complete_timer.timeout.connect(self._fade_out_scan_complete)
 
         self.progress_layout = QVBoxLayout(section)
         self.progress_layout.setContentsMargins(0, 0, 0, 0)
@@ -980,13 +1279,13 @@ class MainWindow(QMainWindow):
         self.progress_status_row.addStretch(1)
         self.progress_status_row.addWidget(self.progress_percent_label)
 
-        self.progress_bar = QProgressBar()
+        self.progress_bar = SmoothProgressBar()
         self.progress_bar.setObjectName("progressBar")
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setFixedHeight(int(self.ui_sizes["progress_bar_height"]))
-        self.progress_bar.valueChanged.connect(self._refresh_progress_percent)
+        self.progress_bar.displayRatioChanged.connect(self._refresh_progress_percent)
 
         self.summary_label = QLabel("")
         self.summary_label.setObjectName("progressDetail")
@@ -1209,7 +1508,11 @@ class MainWindow(QMainWindow):
         """Restore checkbox selections captured at the start of a scan."""
         for track in tracks:
             row = self.track_list.itemWidget(self.item_by_track_name[track.name])
-            row.checkbox.setChecked((track.index, track.name) in self._scan_selection)
+            selected = (track.index, track.name) in self._scan_selection
+            if isinstance(row, StemTrackRow):
+                row.set_checked_immediate(selected)
+            else:
+                row.checkbox.setChecked(selected)
 
     def _handle_tracks_ready(self, tracks: list[StemTrack]) -> None:
         """Display detected stem rows while project folder lookup continues."""
@@ -1247,13 +1550,17 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(1)
         self.progress_label.setText("Scan complete")
         self._set_progress_detail(f"Detected {count} stem{'s' if count != 1 else ''}")
-        self._set_progress_state("idle")
-        self._set_export_enabled(bool(self._selected_tracks()))
         if self._pending_export and changed:
             self._pending_export = False
             self._set_progress_state("scan-changed")
             self.progress_label.setText("Set changed")
             self._set_progress_detail("Tracks updated. Review selection, then click Export stems.")
+        elif self.isVisible():
+            self._set_progress_state("scan-complete")
+            self._scan_complete_timer.start()
+        else:
+            self._set_progress_state("idle")
+        self._set_export_enabled(bool(self._selected_tracks()))
         self._set_open_available(self.current_job is not None or self.project is not None)
 
     def _handle_scan_failure(self, message: str) -> None:
@@ -1292,23 +1599,59 @@ class MainWindow(QMainWindow):
         self.empty_stems_label.setText(
             "No stems found.\nName group tracks in ALL CAPS in Ableton, then switch back."
         )
-        self.track_list.clear()
+        row_height = int(self.ui_sizes["stem_row_height"])
+        new_names = {track.name for track in tracks}
+
+        existing_widgets: dict[str, tuple[QListWidgetItem, StemTrackRow]] = {}
+        for name, item in list(self.item_by_track_name.items()):
+            row = self.track_list.itemWidget(item)
+            idx = self.track_list.row(item)
+            if idx < 0 or not isinstance(row, StemTrackRow):
+                continue
+            if name not in new_names:
+                row.stop_animations()
+                self.track_list.takeItem(idx)
+                row.hide()
+                row.setParent(None)
+                row.deleteLater()
+            else:
+                existing_widgets[name] = (item, row)
+
         self.item_by_track_name.clear()
         self.status_by_track_name.clear()
-        for display_index, track in enumerate(tracks, start=1):
-            item = QListWidgetItem(self.track_list)
-            item.setSizeHint(QSize(0, int(self.ui_sizes["stem_row_height"])))
-            row = StemTrackRow(
-                track,
-                display_index,
-                sizes=self.ui_sizes,
-                show_separator=display_index < len(tracks),
-            )
-            row.checkbox.toggled.connect(self._handle_track_selection_changed)
-            self.track_list.setItemWidget(item, row)
+
+        animate_new = self.isVisible() and self.track_list.isVisible()
+        for target_idx, track in enumerate(tracks):
+            display_index = target_idx + 1
+            reused = existing_widgets.get(track.name)
+            if reused is not None:
+                item, row = reused
+                current_idx = self.track_list.row(item)
+                if current_idx != target_idx:
+                    row.setParent(None)
+                    taken = self.track_list.takeItem(current_idx)
+                    self.track_list.insertItem(target_idx, taken)
+                    self.track_list.setItemWidget(taken, row)
+                    item = taken
+                item.setSizeHint(QSize(0, row_height))
+                row.update_track(track, display_index, sizes=self.ui_sizes)
+            else:
+                item = QListWidgetItem()
+                item.setSizeHint(QSize(0, row_height))
+                self.track_list.insertItem(target_idx, item)
+                row = StemTrackRow(
+                    track,
+                    display_index,
+                    sizes=self.ui_sizes,
+                    show_separator=display_index < len(tracks),
+                )
+                row.checkbox.toggled.connect(self._handle_track_selection_changed)
+                self.track_list.setItemWidget(item, row)
+                if animate_new:
+                    row.fade_in(DURATION_REBUILD)
             self.item_by_track_name[track.name] = item
             self.status_by_track_name[track.name] = row.status_label
-        row_height = int(self.ui_sizes["stem_row_height"])
+
         self.track_list.setFixedHeight(len(tracks) * row_height if tracks else 0)
         self._refresh_selection_count()
 
@@ -1416,6 +1759,11 @@ class MainWindow(QMainWindow):
         if self.current_job is None or not self.current_job.selected_tracks or self.export_thread is not None:
             return
 
+        for item in self.item_by_track_name.values():
+            row = self.track_list.itemWidget(item)
+            if isinstance(row, StemTrackRow):
+                row.reset_status()
+
         self.export_cancel_requested = False
         self.progress_bar.setRange(0, len(self.current_job.selected_tracks) or 1)
         self.progress_bar.setValue(0)
@@ -1480,6 +1828,7 @@ class MainWindow(QMainWindow):
         self._set_export_progress_detail()
 
     def _set_track_status(self, label: QLabel, status: str, reason: str = "") -> None:
+        was_hidden = label.isHidden()
         text = {
             "exporting": "Exporting",
             "retrying": "Retrying",
@@ -1499,10 +1848,17 @@ class MainWindow(QMainWindow):
         while parent is not None and not isinstance(parent, StemTrackRow):
             parent = parent.parentWidget()
         if parent is not None:
-            parent.set_animating(status in {"exporting", "retrying"})
+            parent.set_status_state(status, was_hidden=was_hidden)
             parent.update()
 
+    def _fade_out_scan_complete(self) -> None:
+        if self._progress_state == "scan-complete":
+            self._set_progress_state("idle")
+
     def _set_progress_state(self, status: str) -> None:
+        self._progress_state = status
+        if hasattr(self, "_scan_complete_timer") and status != "scan-complete":
+            self._scan_complete_timer.stop()
         for widget in (
             self.progress_card,
             self.progress_label,
@@ -1515,9 +1871,44 @@ class MainWindow(QMainWindow):
             widget.style().polish(widget)
             widget.update()
         show_meter = status in {"export-starting", "export-in-progress", "cancelling", "cancelled"}
-        self.progress_card.setVisible(status != "idle")
         self.progress_bar.setVisible(show_meter)
         self.progress_percent_label.setVisible(show_meter)
+
+        if status == "idle":
+            if self.isVisible():
+                if self.progress_card.height() > 0:
+                    self.progress_card.setMinimumHeight(self.progress_card.height())
+                self.progress_card.setVisible(True)
+                if effective_duration(DURATION_BASE) > 0 and self._progress_opacity.opacity() > 0.0:
+                    fade_widget(
+                        self.progress_card,
+                        0.0,
+                        DURATION_BASE,
+                        effect=self._progress_opacity,
+                    )
+                else:
+                    stop_fade_widget(self.progress_card)
+                    self._progress_opacity.setOpacity(0.0)
+            else:
+                stop_fade_widget(self.progress_card)
+                self._progress_opacity.setOpacity(0.0)
+                self.progress_card.setVisible(False)
+        elif status in {"scanning", "scan-complete"}:
+            self.progress_card.setMinimumHeight(0)
+            self.progress_card.setVisible(True)
+            fade_widget(
+                self.progress_card,
+                1.0,
+                DURATION_FAST,
+                effect=self._progress_opacity,
+                animate=self.isVisible(),
+            )
+        else:
+            self.progress_card.setMinimumHeight(0)
+            stop_fade_widget(self.progress_card)
+            self._progress_opacity.setOpacity(1.0)
+            self.progress_card.setVisible(True)
+
         self._refresh_progress_percent()
 
     def _set_progress_detail(self, text: str) -> None:
@@ -1536,13 +1927,16 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_progress_percent(self, *_args) -> None:
-        maximum = self.progress_bar.maximum()
-        minimum = self.progress_bar.minimum()
-        span = maximum - minimum
-        if span <= 0:
-            percent = 0
+        if hasattr(self.progress_bar, "display_ratio"):
+            percent = round(self.progress_bar.display_ratio * 100)
         else:
-            percent = round(((self.progress_bar.value() - minimum) / span) * 100)
+            maximum = self.progress_bar.maximum()
+            minimum = self.progress_bar.minimum()
+            span = maximum - minimum
+            if span <= 0:
+                percent = 0
+            else:
+                percent = round(((self.progress_bar.value() - minimum) / span) * 100)
         self.progress_percent_label.setText(f"{max(0, min(percent, 100))}%")
 
     def _handle_export_finished(self, result: ExportResult) -> None:
@@ -1615,6 +2009,40 @@ class MainWindow(QMainWindow):
         while not path.exists() and path != path.parent:
             path = path.parent
         subprocess.run(["open", str(path)], check=False)
+
+    def _reserve_scan_progress_height(self) -> int:
+        status_h = self.progress_label.sizeHint().height()
+        detail_h = self.summary_label.sizeHint().height()
+        return max(0, status_h + self.progress_layout.spacing() + detail_h)
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        super().showEvent(event)
+        if self._progress_state == "idle":
+            reserved = self._reserve_scan_progress_height()
+            if reserved > 0:
+                self.progress_card.setMinimumHeight(reserved)
+            self._progress_opacity.setOpacity(0.0)
+            self.progress_card.setVisible(True)
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
+        if hasattr(self, "_scan_complete_timer"):
+            self._scan_complete_timer.stop()
+        stop_fade_widget(self.progress_card)
+        if self._progress_state == "idle":
+            self._progress_opacity.setOpacity(0.0)
+            self.progress_card.setVisible(False)
+        else:
+            self._progress_opacity.setOpacity(1.0)
+        stop_window_fade(self)
+        self.setWindowOpacity(1.0)
+        self.export_range_ruler.stop_animations()
+        if hasattr(self.progress_bar, "stop_animations"):
+            self.progress_bar.stop_animations()
+        for idx in range(self.track_list.count()):
+            row = self.track_list.itemWidget(self.track_list.item(idx))
+            if isinstance(row, StemTrackRow):
+                row.stop_animations()
+        super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
         if self.export_thread is not None:
