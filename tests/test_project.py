@@ -178,3 +178,54 @@ def test_missing_project_error_still_raised_when_nothing_finds_it(tmp_path):
         assert "Song.als" in str(exc)
     else:
         raise AssertionError("Expected ProjectDetectionError")
+
+
+def test_project_found_through_ableton_open_files_when_spotlight_misses(tmp_path):
+    # Mirrors a set on an external drive: Spotlight briefly loses the .als after
+    # a save and the disk crawl is too slow, but Ableton has the set's recorded
+    # audio open inside the project folder.
+    name = "October 2026 - Check it - 93 bpm  12.4"
+    project_dir = tmp_path / "October 2026 - Check it - 93 bpm  Project"
+    project_file = project_dir / f"{name}.als"
+    sample = project_dir / "Samples" / "Recorded" / "Audio 0001.aif"
+    backup = project_dir / "Backup" / f"{name} [2026-11-16 121350].als"
+    unrelated = tmp_path / "Library" / "Kick.wav"
+    for path in (project_file, sample, backup, unrelated):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x")
+
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(stdout=f"{name}.als*\n", returncode=0, stderr="")
+        if command[0] == "mdfind":
+            return SimpleNamespace(stdout="", returncode=0, stderr="")
+        if command[0] == "lsof":
+            lines = ["p123", f"n{unrelated}", f"n{sample}", f"n{backup}", "n/dev/null"]
+            return SimpleNamespace(stdout="\n".join(lines) + "\n", returncode=0, stderr="")
+        raise AssertionError(command)
+
+    def finder(_name):
+        raise AssertionError("slow disk search must not run when Ableton's open files point to the set")
+
+    project.clear_project_cache()
+    folder, song_name = project.get_project_info(runner=runner, finder=finder, sleep=lambda _s: None)
+    assert (folder, song_name) == (project_dir, name)
+
+
+def test_open_files_lookup_failure_falls_back_to_disk_search(tmp_path):
+    project_file = tmp_path / "Song.als"
+    project_file.write_text("x")
+
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(stdout="Song.als\n", returncode=0, stderr="")
+        if command[0] == "mdfind":
+            return SimpleNamespace(stdout="", returncode=0, stderr="")
+        if command[0] == "lsof":
+            import subprocess
+            raise subprocess.TimeoutExpired("lsof", 5)
+        raise AssertionError(command)
+
+    project.clear_project_cache()
+    folder, _ = project.get_project_info(runner=runner, finder=lambda _n: [project_file], sleep=lambda _s: None)
+    assert folder == project_file.parent

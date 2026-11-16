@@ -51,7 +51,7 @@ def _find_als_on_disk(name: str, runner=subprocess.run, home: Path | None = None
                 ["find", str(root), "-maxdepth", max_depth, "-name", f"{name}.als"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=30 if root.parent == volumes_root else 10,
             )
         except Exception:
             continue
@@ -156,6 +156,43 @@ def _spotlight_candidates(song_name: str, runner) -> list[Path]:
         return []
 
 
+def _open_file_candidates(song_name: str, runner) -> list[Path]:
+    """Find the set via files Ableton has open (e.g. recorded audio in the project folder).
+
+    Works when Spotlight lags after a save and the disk crawl is too slow on
+    external drives. Only folders that actually contain `<song>.als` count.
+    """
+    try:
+        result = runner(
+            ["lsof", "-w", "-Fn", "-c", "Live", "-c", "Ableton"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+    target = f"{song_name}.als"
+    checked: set[Path] = set()
+    candidates: list[Path] = []
+    for line in result.stdout.splitlines():
+        if not line.startswith("n/"):
+            continue
+        for folder in Path(line[1:]).parents:
+            if folder in checked:
+                break
+            checked.add(folder)
+            if folder == folder.parent:
+                continue
+            candidate = folder / target
+            try:
+                found = candidate.is_file()
+            except OSError:
+                found = False
+            if found and not _bad_path(candidate) and candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
 def get_project_info(runner=subprocess.run, finder=_find_als_on_disk, sleep=time.sleep) -> tuple[Path, str]:
     song_name, title_errors = _read_live_window_title_with_errors(runner)
 
@@ -189,6 +226,9 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk, sleep=time
                         _LAST_KNOWN_ALS.pop(song_name, None)
         if attempt < SPOTLIGHT_ATTEMPTS - 1:
             sleep(SPOTLIGHT_RETRY_DELAY)
+
+    if not candidates:
+        candidates = _open_file_candidates(song_name, runner)
 
     if not candidates:
         logger.info("  (Spotlight didn't find '%s.als', searching disk...)", song_name)
