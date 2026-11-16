@@ -1,0 +1,24 @@
+{
+  "mp3_into_existing_folder": [
+    "Song_BASS.mp3",
+    "Song_DRUMS.mp3"
+  ],
+  "replace_mp3_with_aiff": [
+    "Song_BASS.aiff",
+    "Song_DRUMS.aiff"
+  ],
+  "skip_existing": [
+    "skipped",
+    "skipped"
+  ],
+  "keep_both": [
+    "Song_BASS (2).wav",
+    "Song_BASS.aiff",
+    "Song_DRUMS (2).wav",
+    "Song_DRUMS.aiff"
+  ],
+  "failure_messages": [
+    "DRUMS: Couldn't type name",
+    "BASS: Couldn't type name"
+  ]
+}

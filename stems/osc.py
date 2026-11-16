@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 import threading
 import time
 
@@ -10,6 +11,7 @@ from .errors import DependencyError
 ABLETON_OSC_HOST = "127.0.0.1"
 ABLETON_OSC_PORT = 11000
 LISTEN_PORT = 11001
+SEND_DELAY = 0.0005
 
 
 class OSCGateway:
@@ -42,11 +44,16 @@ class OSCGateway:
             self.osc_responses[address] = args
             if address in self.response_events:
                 self.response_events[address].set()
+            key: tuple[str, int] | None = None
             if len(args) >= 2:
                 try:
                     key = (address, int(args[0]))
                 except (ValueError, TypeError):
                     return
+            elif len(args) == 1 and type(args[0]) is int:
+                # AbletonOSC replies (track_index,) when a track has no clips; exclude bool (subclass of int).
+                key = (address, args[0])
+            if key is not None:
                 self.osc_responses[key] = args
                 if key in self.response_events:
                     self.response_events[key].set()
@@ -96,15 +103,38 @@ class OSCGateway:
         with self.osc_lock:
             return self.osc_responses.get(address)
 
+    def _wait_all(self, events: Iterable[threading.Event], timeout: float) -> None:
+        """Wait for all events against a single shared timeout deadline."""
+        deadline = time.monotonic() + timeout
+        for event in events:
+            remaining = max(0.0, deadline - time.monotonic())
+            event.wait(timeout=remaining)
+
+    def ask_many(
+        self,
+        requests: list[tuple[str, tuple]],
+        timeout: float = 3.0,
+    ) -> dict[str, tuple | None]:
+        """Send multiple address queries and wait for all replies against one shared deadline."""
+        if not requests:
+            return {}
+        events: dict[str, threading.Event] = {}
+        for address, _args in requests:
+            if address not in events:
+                events[address] = self.make_event(address)
+        for address, args in requests:
+            self.send(address, *args)
+            time.sleep(SEND_DELAY)
+        self._wait_all(events.values(), timeout)
+        with self.osc_lock:
+            return {address: self.osc_responses.get(address) for address in events}
+
     def fetch_all_parallel(self, address: str, count: int, timeout: float = 6.0) -> dict[int, object]:
         events = {index: self.make_event((address, index)) for index in range(count)}
         for index in range(count):
             self.send(address, index)
-            time.sleep(0.002)
-        deadline = time.time() + timeout
-        for index in range(count):
-            remaining = max(0.0, deadline - time.time())
-            events[index].wait(timeout=remaining)
+            time.sleep(SEND_DELAY)
+        self._wait_all(events.values(), timeout)
 
         results: dict[int, object] = {}
         with self.osc_lock:
@@ -114,4 +144,36 @@ class OSCGateway:
                     if int(value[0]) != index:
                         raise ValueError(f"{address}: expected index {index}, got {value[0]}")
                     results[index] = value[1]
+        return results
+
+    def fetch_many_parallel(
+        self,
+        addresses: list[str],
+        count: int,
+        timeout: float = 2.0,
+    ) -> dict[str, dict[int, tuple]]:
+        """Query per-track values across multiple addresses in one parallel batch."""
+        results: dict[str, dict[int, tuple]] = {address: {} for address in addresses}
+        if count <= 0 or not addresses:
+            return results
+        events: dict[tuple[str, int], threading.Event] = {}
+        for address in results:
+            for index in range(count):
+                key = (address, index)
+                events[key] = self.make_event(key)
+        for address in addresses:
+            for index in range(count):
+                self.send(address, index)
+                time.sleep(SEND_DELAY)
+        self._wait_all(events.values(), timeout)
+
+        with self.osc_lock:
+            for address, address_results in results.items():
+                for index in range(count):
+                    value = self.osc_responses.get((address, index))
+                    if not value:
+                        continue
+                    if int(value[0]) != index:
+                        raise ValueError(f"{address}: expected index {index}, got {value[0]}")
+                    address_results[index] = value[1:]
         return results

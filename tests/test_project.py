@@ -80,14 +80,6 @@ def test_get_project_info_includes_window_title_error_detail():
         raise AssertionError("Expected ProjectDetectionError")
 
 
-def test_rename_old_stems_folders_renames_legacy_folder(tmp_path):
-    legacy = tmp_path / "Stems"
-    legacy.mkdir()
-    new_name = "Song - January 01 2026 - Stems - 120 BPM"
-    project.rename_old_stems_folders(tmp_path, new_name)
-    assert (tmp_path / new_name).exists()
-
-
 def test_get_stems_folder_creates_directory(tmp_path):
     stems_dir = project.get_stems_folder(tmp_path, "Song", None, 120)
     assert stems_dir.exists()
@@ -98,3 +90,142 @@ def test_stems_folder_path_does_not_create_directory(tmp_path):
     stems_dir = project.stems_folder_path(tmp_path, "Song", "C Major", 120)
     assert stems_dir.parent == tmp_path
     assert not stems_dir.exists()
+
+
+def _spotlight_runner(tmp_path, spotlight_replies):
+    """Fake osascript plus a Spotlight that answers from a scripted list.
+
+    An item that is an Exception is raised; anything else is the stdout text.
+    """
+    calls = {"mdfind": 0}
+
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(stdout="Song.als\n", returncode=0, stderr="")
+        if command[0] == "mdfind":
+            reply = spotlight_replies[min(calls["mdfind"], len(spotlight_replies) - 1)]
+            calls["mdfind"] += 1
+            if isinstance(reply, Exception):
+                raise reply
+            return SimpleNamespace(stdout=reply, returncode=0, stderr="")
+        raise AssertionError(command)
+
+    return runner, calls
+
+
+def test_spotlight_miss_right_after_a_save_is_retried_before_the_slow_search(tmp_path):
+    project_file = tmp_path / "Song Project" / "Song.als"
+    project_file.parent.mkdir(parents=True)
+    project_file.write_text("x")
+    runner, calls = _spotlight_runner(tmp_path, ["", f"{project_file}\n"])
+
+    def finder(_name):
+        raise AssertionError("slow disk search must not run when Spotlight answers on retry")
+
+    folder, song_name = project.get_project_info(runner=runner, finder=finder, sleep=lambda _s: None)
+    assert (folder, song_name) == (project_file.parent, "Song")
+    assert calls["mdfind"] == 2
+
+
+def test_spotlight_timeout_is_retried(tmp_path):
+    project_file = tmp_path / "Song.als"
+    project_file.write_text("x")
+    import subprocess
+
+    runner, calls = _spotlight_runner(
+        tmp_path, [subprocess.TimeoutExpired("mdfind", 5), f"{project_file}\n"],
+    )
+    folder, _ = project.get_project_info(
+        runner=runner, finder=lambda _n: [], sleep=lambda _s: None,
+    )
+    assert folder == project_file.parent
+    assert calls["mdfind"] == 2
+
+
+def test_spotlight_that_never_answers_falls_back_to_disk_search_after_bounded_retries(tmp_path):
+    project_file = tmp_path / "Song.als"
+    project_file.write_text("x")
+    runner, calls = _spotlight_runner(tmp_path, [""])
+    sleeps = []
+    finder_calls = []
+
+    def finder(name):
+        finder_calls.append(name)
+        return [project_file]
+
+    folder, _ = project.get_project_info(runner=runner, finder=finder, sleep=sleeps.append)
+    assert folder == project_file.parent
+    assert calls["mdfind"] == 3
+    assert finder_calls == ["Song"]
+    assert sum(sleeps) <= 2.0
+
+
+def test_first_spotlight_hit_does_not_retry_or_sleep(tmp_path):
+    project_file = tmp_path / "Song.als"
+    project_file.write_text("x")
+    runner, calls = _spotlight_runner(tmp_path, [f"{project_file}\n"])
+    sleeps = []
+    project.get_project_info(runner=runner, finder=lambda _n: [], sleep=sleeps.append)
+    assert calls["mdfind"] == 1
+    assert sleeps == []
+
+
+def test_missing_project_error_still_raised_when_nothing_finds_it(tmp_path):
+    runner, _ = _spotlight_runner(tmp_path, [""])
+    try:
+        project.get_project_info(runner=runner, finder=lambda _n: [], sleep=lambda _s: None)
+    except ProjectDetectionError as exc:
+        assert "Song.als" in str(exc)
+    else:
+        raise AssertionError("Expected ProjectDetectionError")
+
+
+def test_project_found_through_ableton_open_files_when_spotlight_misses(tmp_path):
+    # Mirrors a set on an external drive: Spotlight briefly loses the .als after
+    # a save and the disk crawl is too slow, but Ableton has the set's recorded
+    # audio open inside the project folder.
+    name = "October 2026 - Check it - 93 bpm  12.4"
+    project_dir = tmp_path / "October 2026 - Check it - 93 bpm  Project"
+    project_file = project_dir / f"{name}.als"
+    sample = project_dir / "Samples" / "Recorded" / "Audio 0001.aif"
+    backup = project_dir / "Backup" / f"{name} [2026-11-16 121350].als"
+    unrelated = tmp_path / "Library" / "Kick.wav"
+    for path in (project_file, sample, backup, unrelated):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x")
+
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(stdout=f"{name}.als*\n", returncode=0, stderr="")
+        if command[0] == "mdfind":
+            return SimpleNamespace(stdout="", returncode=0, stderr="")
+        if command[0] == "lsof":
+            lines = ["p123", f"n{unrelated}", f"n{sample}", f"n{backup}", "n/dev/null"]
+            return SimpleNamespace(stdout="\n".join(lines) + "\n", returncode=0, stderr="")
+        raise AssertionError(command)
+
+    def finder(_name):
+        raise AssertionError("slow disk search must not run when Ableton's open files point to the set")
+
+    project.clear_project_cache()
+    folder, song_name = project.get_project_info(runner=runner, finder=finder, sleep=lambda _s: None)
+    assert (folder, song_name) == (project_dir, name)
+
+
+def test_open_files_lookup_failure_falls_back_to_disk_search(tmp_path):
+    project_file = tmp_path / "Song.als"
+    project_file.write_text("x")
+
+    def runner(command, **_kwargs):
+        if command[0] == "osascript":
+            return SimpleNamespace(stdout="Song.als\n", returncode=0, stderr="")
+        if command[0] == "mdfind":
+            return SimpleNamespace(stdout="", returncode=0, stderr="")
+        if command[0] == "lsof":
+            import subprocess
+            raise subprocess.TimeoutExpired("lsof", 5)
+        raise AssertionError(command)
+
+    project.clear_project_cache()
+    folder, _ = project.get_project_info(runner=runner, finder=lambda _n: [project_file], sleep=lambda _s: None)
+    assert folder == project_file.parent

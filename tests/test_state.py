@@ -35,7 +35,7 @@ def test_app_state_scans_and_builds_export_job(tmp_path):
     assert job.replace_mode == "keep"
 
 
-def test_app_state_builds_export_job_with_destination_root(tmp_path):
+def test_app_state_keeps_export_with_project_when_destination_root_is_supplied(tmp_path):
     state = AppState(
         FakeAbletonClient(),
         project_info_getter=lambda: (tmp_path / "Project", "Song"),
@@ -45,7 +45,7 @@ def test_app_state_builds_export_job_with_destination_root(tmp_path):
     destination_root = tmp_path / "Exports"
     job = state.build_export_job(key="C Major", replace_mode="replace", destination_root=destination_root)
 
-    assert job.stems_dir == destination_root / stems_folder_name("Song", "C Major", 120)
+    assert job.stems_dir == (tmp_path / "Project") / stems_folder_name("Song", "C Major", 120)
     assert not destination_root.exists()
     assert job.replace_mode == "replace"
 

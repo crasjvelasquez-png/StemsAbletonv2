@@ -1,43 +1,77 @@
 from __future__ import annotations
 
 import re
+import sys
+from pathlib import Path
+
+_ASSET_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+_CHEVRON_PATH = (_ASSET_ROOT / "assets/ui/chevron-down.svg").as_posix()
+_CHECK_PATH = (_ASSET_ROOT / "assets/ui/check.svg").as_posix()
+
+CLIP_COLORS = ("#ff5a5c", "#55c7f2", "#9483f2", "#ffd23f")
+
+DURATION_TWEEN = 140
+DURATION_FAST = 150
+DURATION_DIALOG = 160
+DURATION_REBUILD = 180
+DURATION_BASE = 200
+DURATION_SUCCESS = 220
+SCAN_COMPLETE_HOLD_MS = 1200
 
 DESIGN_TOKENS = {
-    "background": "#15171b",
-    "panel": "#1d2026",
-    "panel_soft": "#242930",
-    "panel_hover": "#2a3038",
-    "field": "#171a1f",
-    "field_hover": "#1d2127",
-    "border": "#353b45",
-    "border_strong": "#4a525e",
-    "separator": "#30363f",
-    "text": "#dfe3e8",
-    "text_strong": "#f2f4f7",
-    "text_muted": "#aab2be",
-    "text_faint": "#737c89",
-    "accent": "#69c7bc",
-    "accent_hover": "#78d3c7",
-    "accent_pressed": "#58b9ae",
-    "success": "#74c991",
-    "warning": "#f5d56e",
-    "danger": "#e85d5d",
-    "accent_text": "#071614",
-    "menu": "#1d2026",
+    "background": "#141415",
+    "panel": "#1b1b1d",
+    "panel_soft": "#232325",
+    "panel_hover": "#232325",
+    "field": "#19191b",
+    "field_hover": "#1f1f22",
+    "border": "rgba(237, 237, 237, 0.10)",
+    "border_strong": "rgba(237, 237, 237, 0.20)",
+    "separator": "rgba(237, 237, 237, 0.08)",
+    "text": "#ededed",
+    "text_strong": "#ededed",
+    "text_muted": "#a1a1a6",
+    "text_faint": "#85858b",
+    "accent": "#ededed",
+    "accent_hover": "#ffffff",
+    "accent_pressed": "#d4d4d6",
+    "success": "#4cc38a",
+    "warning": "#e8b84a",
+    "danger": "#e5484d",
+    "accent_text": "#141415",
+    "menu": "#1b1b1d",
     "radius_panel": "8px",
-    "radius_control": "7px",
-    "radius_pill": "10px",
-    "font_family": '".AppleSystemUIFont", "SF Pro Text", "Helvetica Neue"',
+    "radius_control": "8px",
+    "radius_pill": "8px",
+    "font_family": '".AppleSystemUIFont", "Helvetica Neue"',
+    "sys_blue": "#0a84ff",
+    "sys_blue_text": "#6cb6ff",
+    "sys_blue_fill": "rgba(10, 132, 255, 0.18)",
+    "sys_blue_fill_hover": "rgba(10, 132, 255, 0.28)",
+    "group": "#1e1e20",
+    "group_border": "rgba(255, 255, 255, 0.06)",
+    "row_separator": "rgba(255, 255, 255, 0.07)",
+    "sep_fill": "rgba(255, 255, 255, 0.06)",
 }
 
 
 DARK_STYLESHEET = f"""
 /* Core windows */
+QWidget {{
+    font-family: {DESIGN_TOKENS["font_family"]};
+}}
+
 QMainWindow,
-QDialog {{
+QDialog,
+QMessageBox {{
     background-color: {DESIGN_TOKENS["background"]};
+    color: {DESIGN_TOKENS["text"]};
     font-family: {DESIGN_TOKENS["font_family"]};
     font-size: 13px;
+}}
+
+QMessageBox QLabel {{
+    color: {DESIGN_TOKENS["text"]};
 }}
 
 /* Central widget reference */
@@ -59,25 +93,50 @@ QWidget#appHeader {{
 
 QLabel#appTitle {{
     color: {DESIGN_TOKENS["text_strong"]};
-    font-family: "SF Pro Display", ".AppleSystemUIFont", "Helvetica Neue";
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 18px;
+    font-weight: 600;
+}}
+
+QLabel#dialogTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
     font-size: 18px;
     font-weight: 600;
 }}
 
 /* Product surfaces */
 QWidget#card,
-QWidget#progressCard,
-QWidget#currentSetSection {{
+QWidget#currentSetSection,
+QWidget#progressCard {{
+    background-color: transparent;
+    border: none;
+}}
+
+QWidget#preferencesPreviewCard,
+QWidget#exportConfirmCard {{
     background-color: {DESIGN_TOKENS["panel"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_panel"]};
 }}
 
-/* Section titles inside panels */
-QLabel#cardTitle {{
-    color: {DESIGN_TOKENS["text_strong"]};
-    font-size: 14px;
-    font-weight: 600;
+QFrame#exportConfirmSeparator {{
+    background-color: {DESIGN_TOKENS["separator"]};
+    color: {DESIGN_TOKENS["separator"]};
+    border: none;
+    min-height: 1px;
+    max-height: 1px;
+}}
+
+QWidget#exportRangeBanner {{
+    background-color: {DESIGN_TOKENS["panel"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    border-radius: {DESIGN_TOKENS["radius_panel"]};
+}}
+
+QWidget#footerDock {{
+    background-color: {DESIGN_TOKENS["background"]};
+    border-top: 1px solid {DESIGN_TOKENS["separator"]};
 }}
 
 /* General labels */
@@ -88,105 +147,116 @@ QLabel {{
 
 QLabel#muted {{
     color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 11px;
-    font-weight: 500;
-}}
-
-QLabel#destinationPath {{
-    color: {DESIGN_TOKENS["text"]};
+    font-size: 12px;
     font-weight: 400;
-    font-size: 13px;
 }}
 
-QLabel#currentSetEyebrow {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 10px;
+QLabel#exportConfirmLabel {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#exportConfirmValue {{
+    color: {DESIGN_TOKENS["text"]};
+    font-family: "Menlo", monospace;
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#exportConfirmConflict {{
+    color: {DESIGN_TOKENS["warning"]};
+    font-size: 12px;
     font-weight: 500;
+}}
+
+QLabel#exportRangeLabel {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#exportRangeHeadline {{
+    color: {DESIGN_TOKENS["text"]};
+    font-family: {DESIGN_TOKENS["font_family"]};
+    font-size: 18px;
+    font-weight: 500;
+}}
+
+QLabel#exportRangeMeta {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-family: "Menlo", monospace;
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#preferencesPreviewText {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-family: "Menlo", monospace;
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#preferencesSavedLabel,
+QLabel[saveState="saved"] {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-family: "Menlo", monospace;
+    font-size: 12px;
+    font-weight: 400;
+    padding-right: 4px;
+}}
+
+QLabel#pathTrailName {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QLabel#pathTrailLast {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 13px;
+    font-weight: 600;
+}}
+
+QLabel#pathTrailChevron {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 7px;
+    padding: 0 3px;
+}}
+
+QLabel#pathTrailEmpty {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QLabel#pathTrailNote {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 12px;
+    font-weight: 400;
+    padding-left: 6px;
 }}
 
 QLabel#currentSetValue {{
     color: {DESIGN_TOKENS["text_strong"]};
-    font-family: "SF Pro Display", ".AppleSystemUIFont", "Helvetica Neue";
-    font-size: 17px;
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 30px;
     font-weight: 600;
 }}
 
-QLabel#currentSetBpm {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 11px;
-    font-weight: 500;
-}}
-
-QLabel#currentSetPathValue {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 12px;
-    font-weight: 400;
-}}
-
+QLabel#currentSetBpm,
+QLabel#currentSetMetaSep,
 QLabel#selectionCount {{
     color: {DESIGN_TOKENS["text_muted"]};
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 11px;
-    font-weight: 500;
-}}
-
-/* Export confirmation */
-QLabel#exportConfirmationHeading {{
-    color: {DESIGN_TOKENS["text_strong"]};
-    font-size: 20px;
-    font-weight: 600;
-}}
-
-QLabel#exportConfirmationSupporting {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 13px;
-    font-weight: 400;
-}}
-
-QLabel#exportConfirmationMetadataLabel {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 12px;
-    font-weight: 500;
-}}
-
-QLabel#exportConfirmationDestination {{
-    color: {DESIGN_TOKENS["text_strong"]};
-    font-size: 16px;
-    font-weight: 600;
-}}
-
-QLabel#exportConfirmationDestinationParent {{
-    color: {DESIGN_TOKENS["text_muted"]};
+    font-family: "Menlo", monospace;
     font-size: 12px;
     font-weight: 400;
 }}
 
-QLabel#exportConfirmationMode {{
-    color: {DESIGN_TOKENS["text"]};
+QLabel#emptyStems {{
+    color: {DESIGN_TOKENS["text_muted"]};
     font-size: 13px;
-    font-weight: 500;
-}}
-
-QLabel#exportConfirmationMode[modeState="replace"] {{
-    color: {DESIGN_TOKENS["warning"]};
-}}
-
-QLabel#exportConfirmationTrackList {{
-    color: {DESIGN_TOKENS["text"]};
-    font-size: 13px;
-    font-weight: 400;
-}}
-
-QScrollArea#exportConfirmationTrackScroll {{
-    background-color: transparent;
-    border: none;
-}}
-
-QFrame#exportConfirmationSeparator {{
-    background-color: {DESIGN_TOKENS["separator"]};
-    color: {DESIGN_TOKENS["separator"]};
+    padding: 0px;
 }}
 
 /* Inputs */
@@ -194,7 +264,7 @@ QLineEdit {{
     background-color: {DESIGN_TOKENS["field"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    padding: 7px 10px;
+    padding: 0px 12px;
     color: {DESIGN_TOKENS["text_strong"]};
     selection-background-color: {DESIGN_TOKENS["accent"]};
     selection-color: {DESIGN_TOKENS["accent_text"]};
@@ -207,19 +277,19 @@ QLineEdit:hover {{
 }}
 
 QLineEdit:focus {{
-    border: 2px solid {DESIGN_TOKENS["accent"]};
+    border: 1px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QLineEdit:disabled {{
-    background-color: rgba(24, 27, 36, 0.22);
+    background-color: #161618;
     color: {DESIGN_TOKENS["text_faint"]};
-    border-color: rgba(220, 230, 255, 0.06);
+    border-color: rgba(237, 237, 237, 0.06);
 }}
 
-QLineEdit#exportInput,
-QComboBox#exportInput {{
-    min-height: 32px;
-    padding: 7px 10px;
+QLineEdit#exportInput {{
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0px 12px;
 }}
 
 /* Dropdowns */
@@ -227,9 +297,10 @@ QComboBox {{
     background-color: {DESIGN_TOKENS["field"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    padding: 7px 10px;
+    padding: 6px 34px 6px 12px;
     color: {DESIGN_TOKENS["text_strong"]};
     min-width: 124px;
+    min-height: 22px;
     font-size: 13px;
 }}
 
@@ -239,39 +310,36 @@ QComboBox:hover {{
 }}
 
 QComboBox:focus {{
-    border: 2px solid {DESIGN_TOKENS["accent"]};
+    border: 1px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QComboBox:disabled {{
-    background-color: rgba(24, 27, 36, 0.22);
+    background-color: #161618;
     color: {DESIGN_TOKENS["text_faint"]};
-    border-color: rgba(220, 230, 255, 0.06);
+    border-color: rgba(237, 237, 237, 0.06);
 }}
 
 QComboBox::drop-down {{
     subcontrol-origin: padding;
     subcontrol-position: top right;
     width: 28px;
-    border-left: 1px solid rgba(220, 230, 255, 0.08);
+    border-left: 1px solid {DESIGN_TOKENS["separator"]};
 }}
 
 QComboBox::down-arrow {{
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {DESIGN_TOKENS["text_muted"]};
-    width: 0px;
-    height: 0px;
-    margin-right: 9px;
+    image: url("{_CHEVRON_PATH}");
+    width: 12px;
+    height: 12px;
 }}
 
 QComboBox QAbstractItemView {{
     background-color: {DESIGN_TOKENS["menu"]};
     border: 1px solid {DESIGN_TOKENS["border_strong"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    selection-background-color: rgba(124, 196, 240, 0.22);
+    selection-background-color: {DESIGN_TOKENS["panel_hover"]};
     selection-color: {DESIGN_TOKENS["text_strong"]};
-    padding: 5px;
+    color: {DESIGN_TOKENS["text"]};
+    padding: 4px;
     outline: none;
 }}
 
@@ -281,187 +349,308 @@ QPushButton {{
     color: {DESIGN_TOKENS["text"]};
     border: 1px solid {DESIGN_TOKENS["border"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    padding: 8px 16px;
+    padding: 0px 16px;
     font-size: 13px;
     font-weight: 500;
-    min-height: 32px;
+    min-height: 34px;
 }}
 
 QPushButton:hover {{
-    background-color: {DESIGN_TOKENS["panel_hover"]};
+    background-color: #2a2a2d;
     border-color: {DESIGN_TOKENS["border_strong"]};
     color: {DESIGN_TOKENS["text_strong"]};
 }}
 
 QPushButton:pressed {{
-    background-color: rgba(24, 27, 36, 0.68);
-    border-color: rgba(124, 196, 240, 0.24);
+    background-color: {DESIGN_TOKENS["panel"]};
+    border-color: rgba(237, 237, 237, 0.14);
 }}
 
 QPushButton:focus {{
-    border: 2px solid {DESIGN_TOKENS["accent"]};
+    border: 1px solid {DESIGN_TOKENS["accent"]};
 }}
 
 QPushButton:disabled {{
-    background-color: rgba(32, 36, 48, 0.24);
+    background-color: transparent;
     color: {DESIGN_TOKENS["text_faint"]};
-    border-color: rgba(220, 230, 255, 0.055);
+    border-color: {DESIGN_TOKENS["border"]};
 }}
 
+QPushButton:default,
 QPushButton#primaryAction {{
     background-color: {DESIGN_TOKENS["accent"]};
     color: {DESIGN_TOKENS["accent_text"]};
-    border: 1px solid rgba(196, 232, 255, 0.62);
+    border: 1px solid {DESIGN_TOKENS["accent"]};
     font-weight: 600;
 }}
 
+QPushButton:default:hover,
 QPushButton#primaryAction:hover {{
     background-color: {DESIGN_TOKENS["accent_hover"]};
-    border-color: rgba(220, 244, 255, 0.72);
+    border-color: {DESIGN_TOKENS["accent_hover"]};
+    color: {DESIGN_TOKENS["accent_text"]};
 }}
 
+QPushButton:default:pressed,
 QPushButton#primaryAction:pressed {{
     background-color: {DESIGN_TOKENS["accent_pressed"]};
-    border-color: rgba(124, 196, 240, 0.58);
+    border-color: {DESIGN_TOKENS["accent_pressed"]};
+    color: {DESIGN_TOKENS["accent_text"]};
 }}
 
+QPushButton:default:focus,
+QPushButton#primaryAction:focus {{
+    border: 1px solid {DESIGN_TOKENS["accent"]};
+}}
+
+QPushButton:default:disabled,
 QPushButton#primaryAction:disabled {{
-    background-color: rgba(124, 196, 240, 0.20);
-    color: rgba(230, 244, 255, 0.44);
-    border-color: rgba(124, 196, 240, 0.16);
+    background-color: {DESIGN_TOKENS["panel_soft"]};
+    color: {DESIGN_TOKENS["text_faint"]};
+    border-color: {DESIGN_TOKENS["border"]};
 }}
 
 QPushButton#secondary {{
-    background-color: rgba(34, 37, 49, 0.44);
+    background-color: {DESIGN_TOKENS["panel_soft"]};
     color: {DESIGN_TOKENS["text"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    font-weight: 500;
+}}
+
+QPushButton#secondary:hover {{
+    background-color: #2a2a2d;
+    border-color: {DESIGN_TOKENS["border_strong"]};
+    color: {DESIGN_TOKENS["text_strong"]};
+}}
+
+QPushButton#secondary:pressed {{
+    background-color: {DESIGN_TOKENS["panel"]};
+    border-color: rgba(237, 237, 237, 0.14);
+}}
+
+QPushButton#secondary:focus {{
+    border: 1px solid {DESIGN_TOKENS["accent"]};
+}}
+
+QPushButton#secondary:disabled {{
+    background-color: transparent;
+    color: {DESIGN_TOKENS["text_faint"]};
     border-color: {DESIGN_TOKENS["border"]};
 }}
 
 QPushButton[actionBarButton="true"] {{
     min-height: 34px;
     max-height: 34px;
-    border-radius: 7px;
-    padding: 0 16px;
+    border-radius: {DESIGN_TOKENS["radius_control"]};
+    padding: 0px 16px;
     font-size: 13px;
-    font-weight: 500;
-}}
-
-QPushButton#primaryAction[actionBarButton="true"] {{
-    background-color: {DESIGN_TOKENS["accent"]};
-    color: {DESIGN_TOKENS["accent_text"]};
-    border-color: rgba(196, 232, 255, 0.46);
-    font-weight: 600;
-}}
-
-QPushButton#primaryAction[actionBarButton="true"]:hover {{
-    background-color: {DESIGN_TOKENS["accent_hover"]};
-    border-color: rgba(220, 244, 255, 0.58);
-}}
-
-QPushButton#primaryAction[actionBarButton="true"]:pressed {{
-    background-color: {DESIGN_TOKENS["accent_pressed"]};
-    border-color: rgba(160, 218, 252, 0.54);
-}}
-
-QPushButton#primaryAction[actionBarButton="true"]:disabled {{
-    background-color: rgba(124, 196, 240, 0.16);
-    color: rgba(230, 244, 255, 0.42);
-    border-color: rgba(124, 196, 240, 0.22);
-}}
-
-QPushButton#secondary[actionBarButton="true"] {{
-    background-color: rgba(22, 24, 32, 0.22);
-    color: rgba(244, 248, 252, 0.78);
-    border-color: rgba(220, 230, 255, 0.105);
-    font-weight: 500;
-}}
-
-QPushButton#secondary[actionBarButton="true"]:hover {{
-    background-color: rgba(50, 54, 68, 0.40);
-    color: {DESIGN_TOKENS["text_strong"]};
-    border-color: rgba(220, 230, 255, 0.20);
-}}
-
-QPushButton#secondary[actionBarButton="true"]:pressed {{
-    background-color: rgba(24, 27, 36, 0.54);
-    border-color: rgba(124, 196, 240, 0.22);
-}}
-
-QPushButton#secondary[actionBarButton="true"]:disabled {{
-    background-color: rgba(16, 24, 32, 0.24);
-    color: rgba(221, 231, 242, 0.42);
-    border-color: rgba(220, 230, 255, 0.13);
 }}
 
 QPushButton#headerAction {{
     background-color: transparent;
     color: {DESIGN_TOKENS["text_muted"]};
-    border: none;
-    border-radius: 7px;
+    border: 1px solid transparent;
+    border-radius: {DESIGN_TOKENS["radius_control"]};
     padding: 0px;
     font-size: 16px;
     font-weight: 400;
-    min-width: 28px;
-    min-height: 28px;
-    max-width: 28px;
-    max-height: 28px;
+    min-width: 30px;
+    min-height: 30px;
+    max-width: 30px;
+    max-height: 30px;
 }}
 
 QPushButton#headerAction:hover {{
-    background-color: rgba(220, 230, 255, 0.055);
+    background-color: {DESIGN_TOKENS["panel_hover"]};
     color: {DESIGN_TOKENS["text"]};
 }}
 
-/* Lists */
-QWidget#detectedStemsSection {{
+QPushButton#headerAction:pressed {{
+    background-color: {DESIGN_TOKENS["panel"]};
+}}
+
+QPushButton#headerAction:focus {{
+    border: 1px solid {DESIGN_TOKENS["accent"]};
+}}
+
+/* Preferences dialog (macOS System Settings look) */
+QDialog#preferencesDialog QLabel#dialogTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-family: ".AppleSystemUIFont", "Helvetica Neue";
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+}}
+
+QLabel#prefsSubtitle {{
+    color: {DESIGN_TOKENS["text_muted"]};
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QLabel#prefsGroupTitle {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-size: 13px;
+    font-weight: 600;
+    padding-left: 2px;
+}}
+
+QWidget#prefsGroup {{
+    background-color: {DESIGN_TOKENS["group"]};
+    border: 1px solid {DESIGN_TOKENS["group_border"]};
+    border-radius: 12px;
+}}
+
+QFrame#prefsRowSeparator {{
+    background-color: {DESIGN_TOKENS["row_separator"]};
+    border: none;
+    max-height: 1px;
+}}
+
+QLabel#prefsRowLabel {{
+    color: {DESIGN_TOKENS["text"]};
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QLabel#prefsRowHint {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 11px;
+    font-weight: 400;
+}}
+
+QPushButton#nameBlockToken {{
+    background-color: {DESIGN_TOKENS["sys_blue_fill"]};
+    color: {DESIGN_TOKENS["sys_blue_text"]};
+    border: none;
+    border-radius: 13px;
+    padding: 0px 12px;
+    min-height: 26px;
+    max-height: 26px;
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QPushButton#nameBlockToken:hover {{
+    background-color: {DESIGN_TOKENS["sys_blue_fill_hover"]};
+}}
+
+QPushButton#nameBlockText {{
+    background-color: {DESIGN_TOKENS["sep_fill"]};
+    color: {DESIGN_TOKENS["text_muted"]};
+    border: none;
+    border-radius: 13px;
+    padding: 0px 9px;
+    min-height: 26px;
+    max-height: 26px;
+    font-size: 13px;
+    font-weight: 400;
+}}
+
+QPushButton#nameBlockText:hover {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    background-color: rgba(255, 255, 255, 0.10);
+}}
+
+QPushButton#nameBlockAdd {{
+    background-color: transparent;
+    color: {DESIGN_TOKENS["sys_blue_text"]};
+    border: 1px dashed rgba(10, 132, 255, 0.55);
+    border-radius: 13px;
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0px;
+    font-size: 16px;
+    font-weight: 500;
+}}
+
+QPushButton#nameBlockAdd:hover {{
+    background-color: {DESIGN_TOKENS["sys_blue_fill"]};
+}}
+
+QPushButton#nameBuilderTextToggle {{
+    background-color: transparent;
+    color: {DESIGN_TOKENS["sys_blue_text"]};
+    border: none;
+    padding: 0px;
+    font-size: 12px;
+    text-decoration: none;
+}}
+
+QPushButton#nameBuilderTextToggle:hover {{
+    color: #9ccdff;
     background-color: transparent;
 }}
 
-QWidget#stemListPanel {{
-    background-color: {DESIGN_TOKENS["panel"]};
-    border: 1px solid {DESIGN_TOKENS["border"]};
-    border-radius: {DESIGN_TOKENS["radius_panel"]};
+QLabel#nameLooksLike {{
+    color: {DESIGN_TOKENS["text_strong"]};
+    font-size: 13px;
+    font-weight: 500;
 }}
 
-QListWidget {{
+QLabel#nameLooksLikeCaption {{
+    color: {DESIGN_TOKENS["text_faint"]};
+    font-size: 11px;
+    font-weight: 400;
+}}
+
+QLabel#prefsError {{
+    color: #ff6961;
+    font-size: 12px;
+    font-weight: 400;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction {{
+    background-color: {DESIGN_TOKENS["sys_blue"]};
+    color: #ffffff;
+    border: none;
+    border-radius: 7px;
+    font-weight: 500;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction:hover {{
+    background-color: #2b95ff;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction:pressed {{
+    background-color: #0071e3;
+}}
+
+QDialog#preferencesDialog QPushButton#primaryAction:disabled {{
+    background-color: {DESIGN_TOKENS["panel_soft"]};
+    color: {DESIGN_TOKENS["text_faint"]};
+    border: 1px solid {DESIGN_TOKENS["border"]};
+}}
+
+QWidget#prefsGroup QComboBox {{
+    min-width: 180px;
+}}
+
+/* Lists */
+QWidget#detectedStemsSection,
+QWidget#stemListPanel {{
     background-color: transparent;
     border: none;
-    border-radius: {DESIGN_TOKENS["radius_control"]};
+}}
+
+QListWidget,
+QListWidget#stemTrackList {{
+    background-color: transparent;
+    border: none;
     padding: 0px;
     outline: none;
 }}
 
 QListWidget::item {{
     background-color: transparent;
-}}
-
-QWidget#stemTrackRowContent {{
-    background-color: transparent;
-    border-radius: 6px;
-}}
-
-QWidget#stemTrackRowContent:hover {{
-    background-color: rgba(220, 230, 255, 0.035);
-}}
-
-QFrame#stemTrackRowSeparator {{
-    color: rgba(220, 230, 255, 0.095);
-    background-color: rgba(220, 230, 255, 0.095);
     border: none;
-    max-height: 1px;
+    padding: 0px;
 }}
 
-QLabel#stemRowIndex {{
-    color: {DESIGN_TOKENS["text_faint"]};
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 11px;
-    font-weight: 500;
-}}
-
-QLabel#stemRowName {{
-    color: {DESIGN_TOKENS["text_strong"]};
-    font-size: 14px;
-    font-weight: 500;
+QWidget#stemTrackRow {{
+    background-color: transparent;
 }}
 
 QLabel#stemRowStatus {{
@@ -470,34 +659,27 @@ QLabel#stemRowStatus {{
     font-size: 12px;
     font-weight: 500;
     padding: 0px;
+    background-color: transparent;
 }}
 
 QLabel#stemRowStatus[statusState="detected"] {{
     color: {DESIGN_TOKENS["text_muted"]};
-    background-color: transparent;
 }}
 
 QLabel#stemRowStatus[statusState="exporting"] {{
-    color: {DESIGN_TOKENS["accent"]};
-    background-color: transparent;
+    color: {DESIGN_TOKENS["text"]};
 }}
 
 QLabel#stemRowStatus[statusState="success"] {{
-    color: {DESIGN_TOKENS["success"]};
-    background-color: transparent;
-    border: none;
+    color: {DESIGN_TOKENS["accent_text"]};
 }}
 
 QLabel#stemRowStatus[statusState="skipped"] {{
     color: {DESIGN_TOKENS["warning"]};
-    background-color: transparent;
-    border: none;
 }}
 
 QLabel#stemRowStatus[statusState="failed"] {{
     color: {DESIGN_TOKENS["danger"]};
-    background-color: transparent;
-    border: none;
 }}
 
 /* Progress */
@@ -517,27 +699,28 @@ QLabel#progressStatus[progressState="export-failed"] {{
 QLabel#progressPercent {{
     color: {DESIGN_TOKENS["text_muted"]};
     background-color: transparent;
-    font-size: 13px;
+    font-family: "Menlo", monospace;
+    font-size: 12px;
     font-weight: 400;
 }}
 
 QProgressBar#progressBar {{
-    background-color: rgba(220, 230, 255, 0.09);
+    background-color: {DESIGN_TOKENS["border"]};
     border: none;
-    border-radius: 2px;
+    border-radius: 0px;
     color: transparent;
-    min-height: 4px;
-    max-height: 4px;
+    min-height: 2px;
+    max-height: 2px;
 }}
 
 QProgressBar#progressBar::chunk {{
     background-color: {DESIGN_TOKENS["accent"]};
-    border-radius: 2px;
+    border-radius: 0px;
 }}
 
 QLabel#progressDetail {{
     color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 400;
 }}
 
@@ -557,27 +740,36 @@ QCheckBox:focus {{
     color: {DESIGN_TOKENS["text_strong"]};
 }}
 
-QCheckBox#stemRowCheckbox {{
-    background-color: rgba(105, 199, 188, 0.11);
-    border: 1px solid rgba(105, 199, 188, 0.78);
-    border-radius: 6px;
-    color: {DESIGN_TOKENS["accent_hover"]};
-    font-size: 13px;
-    font-weight: 600;
-    padding-left: 7px;
-    padding-top: 0px;
-    spacing: 0px;
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
 }}
 
-QCheckBox#stemRowCheckbox:hover {{
-    background-color: rgba(105, 199, 188, 0.18);
-    border-color: rgba(120, 211, 199, 0.92);
-}}
-
-QCheckBox#stemRowCheckbox:unchecked {{
+QCheckBox::indicator:unchecked {{
     background-color: transparent;
-    border-color: rgba(170, 178, 190, 0.42);
-    color: transparent;
+    border: 1.5px solid #55555a;
+}}
+
+QCheckBox::indicator:unchecked:hover {{
+    border-color: {DESIGN_TOKENS["text_muted"]};
+}}
+
+QCheckBox::indicator:checked {{
+    background-color: {DESIGN_TOKENS["accent"]};
+    border: 1.5px solid {DESIGN_TOKENS["accent"]};
+    image: url("{_CHECK_PATH}");
+}}
+
+QCheckBox::indicator:checked:hover {{
+    background-color: {DESIGN_TOKENS["accent_hover"]};
+    border-color: {DESIGN_TOKENS["accent_hover"]};
+    image: url("{_CHECK_PATH}");
+}}
+
+QCheckBox#stemRowCheckbox {{
+    background-color: transparent;
+    border: none;
 }}
 
 QCheckBox#stemRowCheckbox::indicator {{
@@ -591,188 +783,18 @@ QWidget#destinationControl {{
     background-color: transparent;
 }}
 
-/* Menus and dialogs */
+/* Menus and tabs */
 QTabWidget::pane {{
     background-color: {DESIGN_TOKENS["panel"]};
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 10px;
+    border: 1px solid {DESIGN_TOKENS["border"]};
+    border-radius: {DESIGN_TOKENS["radius_panel"]};
     top: -1px;
-}}
-
-QWidget#preferencesGeneral,
-QWidget#preferencesNaming {{
-    background-color: transparent;
-}}
-
-QFrame#preferencesGroup {{
-    background-color: {DESIGN_TOKENS["panel_soft"]};
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 10px;
-}}
-
-QLabel#preferencesGroupTitle {{
-    color: {DESIGN_TOKENS["text_faint"]};
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 10px;
-    font-weight: 600;
-    padding-bottom: 4px;
-}}
-
-QWidget#preferencesSettingRow {{
-    background-color: transparent;
-}}
-
-QLabel#preferencesSettingLabel {{
-    color: {DESIGN_TOKENS["text"]};
-    font-size: 13px;
-    font-weight: 500;
-}}
-
-QFrame#preferencesSeparator {{
-    background-color: {DESIGN_TOKENS["separator"]};
-    border: none;
-    max-height: 1px;
-}}
-
-QComboBox#preferencesReplaceMode {{
-    min-width: 192px;
-    min-height: 24px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-}}
-
-QCheckBox#preferencesToggle {{
-    min-width: 40px;
-    min-height: 40px;
-    spacing: 0px;
-}}
-
-QCheckBox#preferencesToggle::indicator {{
-    width: 18px;
-    height: 18px;
-}}
-
-QPushButton#preferencesUtilityAction,
-QPushButton#preferencesResetAction {{
-    min-height: 30px;
-    padding: 4px 12px;
-}}
-
-QPushButton#preferencesUtilityAction {{
-    color: {DESIGN_TOKENS["accent_hover"]};
-}}
-
-QPushButton#preferencesResetAction {{
-    background-color: transparent;
-    color: {DESIGN_TOKENS["text_muted"]};
-    border-color: transparent;
-}}
-
-QPushButton#preferencesResetAction:hover {{
-    background-color: rgba(232, 93, 93, 0.10);
-    color: #ffaaa4;
-    border-color: rgba(232, 93, 93, 0.24);
-}}
-
-QLabel#preferencesSaveStatus {{
-    color: {DESIGN_TOKENS["success"]};
-    font-size: 12px;
-    font-weight: 500;
-    padding: 0 4px;
-}}
-
-QLabel#preferencesSaveStatus[saveState="pending"] {{
-    color: {DESIGN_TOKENS["warning"]};
-}}
-
-QFrame#namingPresetCard {{
-    background-color: {DESIGN_TOKENS["panel_soft"]};
-    border: 1px solid {DESIGN_TOKENS["border"]};
-    border-radius: {DESIGN_TOKENS["radius_control"]};
-}}
-
-QLabel#preferencesFieldTitle {{
-    color: {DESIGN_TOKENS["text_strong"]};
-    font-weight: 600;
-}}
-
-QLabel#preferencesSubLabel {{
-    color: {DESIGN_TOKENS["text"]};
-    font-size: 12px;
-    font-weight: 600;
-}}
-
-QLabel#preferencesHint {{
-    color: {DESIGN_TOKENS["text_muted"]};
-    font-size: 13px;
-}}
-
-QLabel#preferencesError {{
-    color: #ffaaa4;
-    font-size: 12px;
-}}
-
-QLabel#presetDefaultBadge {{
-    background-color: rgba(124, 196, 240, 0.16);
-    color: {DESIGN_TOKENS["accent_hover"]};
-    border: 1px solid rgba(124, 196, 240, 0.42);
-    border-radius: 8px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 600;
-}}
-
-QPushButton#tokenButton {{
-    min-width: 54px;
-    padding: 5px 9px;
-    background-color: {DESIGN_TOKENS["field"]};
-    color: {DESIGN_TOKENS["accent_hover"]};
-    border: 1px solid {DESIGN_TOKENS["border_strong"]};
-    border-radius: 7px;
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 12px;
-}}
-
-QPushButton#tokenButton:hover {{
-    background-color: rgba(124, 196, 240, 0.14);
-    border-color: rgba(161, 220, 251, 0.72);
-}}
-
-QPushButton#tokenButton:pressed {{
-    background-color: rgba(124, 196, 240, 0.24);
-}}
-
-QPushButton#tokenButton:focus,
-QPushButton#presetSecondaryAction:focus,
-QPushButton#presetDefaultAction:focus {{
-    border-color: {DESIGN_TOKENS["accent"]};
-}}
-
-QPushButton#presetSecondaryAction,
-QPushButton#presetDefaultAction {{
-    min-height: 34px;
-    padding: 0 12px;
-}}
-
-QPushButton#presetDefaultAction {{
-    color: {DESIGN_TOKENS["accent_hover"]};
-    border-color: rgba(124, 196, 240, 0.56);
-}}
-
-QLabel#preferencesPreview {{
-    background-color: {DESIGN_TOKENS["field"]};
-    color: {DESIGN_TOKENS["text"]};
-    border: 1px solid {DESIGN_TOKENS["border"]};
-    border-radius: 6px;
-    padding: 10px;
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 13px;
 }}
 
 QTabBar::tab {{
     background-color: {DESIGN_TOKENS["background"]};
     color: {DESIGN_TOKENS["text_muted"]};
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    border: 1px solid {DESIGN_TOKENS["border"]};
     border-bottom: none;
     min-width: 94px;
     min-height: 28px;
@@ -798,7 +820,7 @@ QMenu {{
     background-color: {DESIGN_TOKENS["menu"]};
     border: 1px solid {DESIGN_TOKENS["border_strong"]};
     border-radius: {DESIGN_TOKENS["radius_control"]};
-    padding: 5px;
+    padding: 4px;
 }}
 
 QMenu::item {{
@@ -810,7 +832,7 @@ QMenu::item {{
 }}
 
 QMenu::item:selected {{
-    background-color: rgba(124, 196, 240, 0.20);
+    background-color: {DESIGN_TOKENS["panel_hover"]};
     color: {DESIGN_TOKENS["text_strong"]};
 }}
 
@@ -826,13 +848,13 @@ QScrollBar:vertical {{
 }}
 
 QScrollBar::handle:vertical {{
-    background-color: rgba(220, 230, 255, 0.16);
+    background-color: rgba(237, 237, 237, 0.16);
     border-radius: 4px;
     min-height: 30px;
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background-color: rgba(220, 230, 255, 0.26);
+    background-color: rgba(237, 237, 237, 0.26);
 }}
 
 QScrollBar::add-line:vertical,
@@ -858,5 +880,5 @@ def stylesheet_for_scale(scale: float) -> str:
                 return f"{property_name}0px"
             applied_scale = max(0.9, key) if property_name else key
             return f"{property_name}{max(1, round(value * applied_scale))}px"
-        _stylesheet_cache[key] = re.sub(r"(font-size:\s*)?(\d+)px", replace_px, BASE_STYLESHEET)
+        _stylesheet_cache[key] = re.sub(r"(font-size:\s*)?(?<![\d.])(\d+)px", replace_px, BASE_STYLESHEET)
     return _stylesheet_cache[key]

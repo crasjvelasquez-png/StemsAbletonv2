@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import re
 
-from .models import StemTrack
+from .models import StemTrack, normalize_track_color
 
 
 BUS_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9 _&/]+$")
-DEFAULT_EXCLUDED_NAMES = {"PRINT", "MIXBUS", "REF", "MASTER"}
+DEFAULT_EXCLUDED_NAMES = {"PRINT", "MIXBUS", "REF"}
 
 
 def is_stem_candidate(name: str, exclusions: set[str] | None = None) -> bool:
@@ -20,5 +20,11 @@ def find_bus_tracks(all_tracks: list[dict[str, object]], exclusions: set[str] | 
     for track in all_tracks:
         name = str(track["name"]).strip()
         if is_stem_candidate(name, exclusions=exclusions):
-            tracks.append(StemTrack(index=int(track["index"]), name=name))
+            tracks.append(
+                StemTrack(
+                    index=int(track["index"]),
+                    name=name,
+                    color=normalize_track_color(track.get("color")),
+                )
+            )
     return tracks

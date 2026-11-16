@@ -1,0 +1,17 @@
+{
+  "batched": {
+    "osc_messages": 87,
+    "scan_seconds": 0.483,
+    "tracks": 40
+  },
+  "fallback": {
+    "osc_messages": 167,
+    "scan_seconds": 1.566,
+    "tracks": 40
+  },
+  "slow_project_lookup": {
+    "osc_messages": 87,
+    "scan_seconds": 0.605,
+    "tracks": 40
+  }
+}

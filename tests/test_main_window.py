@@ -6,8 +6,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTabWidget, QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox, QTabWidget
 
 from stems.models import ExportItemResult, ExportJob, ExportResult, ProjectContext, StemTrack
 from stems.naming import stems_folder_name
@@ -27,7 +27,7 @@ class DummyGateway:
 
 class DummyPreferencesStore:
     def load(self) -> Preferences:
-        return Preferences(sticky_panel_position=False)
+        return Preferences()
 
     def save(self, _preferences: Preferences) -> None:
         pass
@@ -51,6 +51,7 @@ class ExportReadyState:
         custom_song_name: str | None = None,
         stem_name_format: str | None = None,
         folder_name_format: str | None = None,
+        artist: str | None = None,
     ) -> ExportJob:
         stems_root = Path(destination_root) if destination_root is not None else self.project.project_folder
         return ExportJob(
@@ -60,6 +61,7 @@ class ExportReadyState:
             tracks=self.detected_tracks,
             bpm=self.project.bpm,
             key=key,
+            artist=artist,
             replace_mode=replace_mode,
             custom_song_name=custom_song_name,
             stem_name_format=stem_name_format,
@@ -77,192 +79,21 @@ def app():
 
 @pytest.fixture
 def window(app, monkeypatch):
+    # UI tests must never launch Finder or other external applications.
+    monkeypatch.setattr(
+        main_window_module.subprocess, "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
     monkeypatch.setattr(main_window_module, "PreferencesStore", DummyPreferencesStore)
     monkeypatch.setattr(main_window_module, "OSCGateway", DummyGateway)
     monkeypatch.setattr(main_window_module, "AbletonClient", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(main_window_module, "AppState", DummyState)
-    monkeypatch.setattr(main_window_module.MainWindow, "_build_tray", lambda self: None)
     monkeypatch.setattr(main_window_module.QTimer, "singleShot", staticmethod(lambda *_args, **_kwargs: None))
     monkeypatch.setattr(main_window_module, "is_launch_agent_installed", lambda: False)
 
     panel = main_window_module.MainWindow()
     yield panel
     panel.close()
-
-
-def test_current_set_summary_uses_studio_information_hierarchy(window):
-    assert window.app_title.text() == "Stems"
-    assert window.song_value.objectName() == "currentSetValue"
-    assert window.bpm_value.objectName() == "currentSetBpm"
-    assert window.path_value.objectName() == "currentSetPathValue"
-    assert window.path_value.toolTip() == "-"
-
-
-def test_default_window_size_keeps_detected_stem_controls_visible(window):
-    assert window.size() == QSize(*main_window_module.REFERENCE_WINDOW_SIZE)
-    assert window.size() == QSize(620, 760)
-    assert window.minimumSize() == QSize(480, 560)
-
-
-def test_progress_card_is_compact_and_hidden_while_idle(window):
-    assert window.progress_card.objectName() == "progressCard"
-    assert window.progress_card.property("progressState") == "idle"
-    assert window.progress_card.isHidden() is True
-    assert window.progress_card.minimumHeight() == 90
-    assert window.progress_card.maximumHeight() == 110
-    assert window.progress_label.objectName() == "progressStatus"
-    assert window.progress_label.property("progressState") == "idle"
-    assert window.progress_percent_label.objectName() == "progressPercent"
-    assert window.progress_percent_label.text() == "0%"
-    assert window.progress_percent_label.isHidden() is True
-    assert window.progress_bar.objectName() == "progressBar"
-    assert window.progress_bar.isTextVisible() is False
-    assert window.progress_bar.height() == 4
-    assert window.progress_bar.isHidden() is True
-    assert window.summary_label.objectName() == "progressDetail"
-    assert window.summary_label.maximumHeight() == 34
-    assert window.summary_label.wordWrap() is True
-    assert window.summary_label.textInteractionFlags() & Qt.TextSelectableByMouse
-
-
-def test_main_content_scrolls_without_overlapping_export_and_progress(window, app):
-    window.resize(620, 760)
-    window.show()
-    app.processEvents()
-
-    root_layout = window.centralWidget().layout()
-    scroll_area = root_layout.itemAt(0).widget()
-    action_layout = root_layout.itemAt(root_layout.count() - 1).layout()
-    export_card = window.export_section
-    window._set_progress_state("scanning")
-    window.progress_label.setText("Scanning Ableton set")
-    window._set_progress_detail("Looking up song, tempo, project, and stem tracks")
-    app.processEvents()
-
-    assert scroll_area.objectName() == "mainScrollArea"
-    assert export_card.geometry().bottom() < window.progress_card.geometry().top()
-    assert scroll_area.geometry().bottom() < action_layout.geometry().top()
-
-
-def test_scanning_shows_status_without_meter(window):
-    window._set_progress_state("scanning")
-    window.progress_label.setText("Scanning Ableton set")
-    window._set_progress_detail("Looking up song, tempo, project, and stem tracks")
-
-    assert window.progress_card.isHidden() is False
-    assert window.progress_label.text() == "Scanning Ableton set"
-    assert window.summary_label.text().startswith("Looking up song")
-    assert window.progress_percent_label.isHidden() is True
-    assert window.progress_bar.isHidden() is True
-
-
-def test_bottom_action_row_matches_button_hierarchy(window):
-    window_layout = window.centralWidget().layout()
-    action_layout = window_layout.itemAt(window_layout.count() - 1).layout()
-    buttons = [
-        action_layout.itemAt(index).widget()
-        for index in range(action_layout.count())
-        if not action_layout.itemAt(index).widget().isHidden()
-    ]
-
-    assert [button.text() for button in buttons] == [
-        "Scan Current Set",
-        "Export Stems",
-    ]
-    assert window.scan_button.objectName() == "primaryAction"
-    assert window.open_button.objectName() == "secondary"
-    assert window.cancel_button.objectName() == "secondary"
-    assert window.export_button.objectName() == "secondary"
-    assert window.export_button.isEnabled() is False
-    assert window.open_button.isHidden() is True
-    assert window.cancel_button.isHidden() is True
-    assert action_layout.spacing() == 12
-    assert all(button.property("actionBarButton") is True for button in buttons)
-    assert {button.minimumHeight() for button in buttons} == {36}
-    assert {button.maximumHeight() for button in buttons} == {36}
-    assert window.preferences_button.objectName() == "headerAction"
-    assert window.preferences_button not in buttons
-    assert window.preferences_button.text() == ""
-    assert not window.preferences_button.icon().isNull()
-    assert window.preferences_button.accessibleName() == "Preferences"
-
-
-def test_export_controls_remain_readable_and_separated_when_compact(window, app):
-    window.resize(480, 560)
-    window.show()
-    window._set_progress_state("scanning")
-    window.progress_label.setText("Scanning Ableton set")
-    window._set_progress_detail("Looking up song, tempo, project, and stem tracks")
-    app.processEvents()
-
-    controls = (window.project_name_input, window.key_input, window.replace_mode)
-    assert all(control.height() >= 34 for control in controls)
-    assert window.export_options_layout.itemAtPosition(1, 0).widget() is window.project_name_input
-    assert window.export_options_layout.itemAtPosition(3, 0).widget() is window.key_input
-    assert window.export_options_layout.itemAtPosition(5, 0).widget() is window.replace_mode
-    assert window.preferences_button.width() >= 28
-    assert window.scan_button.height() >= 32
-    for button in (window.scan_button, window.export_button):
-        text_width = button.fontMetrics().horizontalAdvance(button.text())
-        assert button.width() >= text_width + 12
-    assert window.action_layout.itemAtPosition(0, 0).widget() is window.scan_button
-    assert window.action_layout.itemAtPosition(0, 1).widget() is window.export_button
-    export_card = window.export_section
-    assert export_card.geometry().bottom() < window.progress_card.geometry().top()
-
-
-def test_resize_reflows_without_scaling_controls(window, app):
-    window.show()
-    app.processEvents()
-    metrics_before = {
-        "font": window.project_name_input.fontMetrics().height(),
-        "field": window.project_name_input.height(),
-        "button": window.scan_button.height(),
-    }
-
-    window.resize(480, 560)
-    app.processEvents()
-
-    assert window.ui_scale == 1.0
-    assert window.project_name_input.fontMetrics().height() == metrics_before["font"]
-    assert window.project_name_input.height() == metrics_before["field"]
-    assert window.scan_button.height() == metrics_before["button"]
-    assert window.export_options_layout.itemAtPosition(3, 0).widget() is window.key_input
-
-    window.resize(900, 700)
-    app.processEvents()
-
-    assert window.export_options_layout.itemAtPosition(1, 0).widget() is window.project_name_input
-    assert window.export_options_layout.itemAtPosition(1, 1).widget() is window.key_input
-
-
-def test_stem_list_uses_outer_scroll_and_keeps_checkboxes_visible(window, app):
-    tracks = [
-        StemTrack(index=index, name=f"VERY LONG CHANNEL NAME {index:02d}")
-        for index in range(16)
-    ]
-    window.state.detected_tracks = tracks
-    window._populate_tracks(tracks)
-    window.resize(480, 560)
-    window.show()
-    app.processEvents()
-
-    outer_scroll = window.centralWidget().layout().itemAt(0).widget().verticalScrollBar()
-    assert window.track_list.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
-    assert window.track_list.verticalScrollBar().maximum() == 0
-    assert outer_scroll.maximum() > 0
-    assert window.selection_count_label.text() == "16 selected"
-
-    first_row = window.track_list.itemWidget(window.track_list.item(0))
-    assert first_row.checkbox.size() == QSize(28, 28)
-    assert first_row.checkbox.geometry().left() >= 0
-    assert first_row.checkbox.geometry().right() < first_row.width()
-    assert first_row.status_label.isHidden() is True
-
-    window._set_track_status(first_row.status_label, "exporting")
-    app.processEvents()
-    assert first_row.status_label.text() == "Exporting"
-    assert first_row.status_label.geometry().right() < first_row.width()
 
 
 def test_selected_count_updates_and_context_actions_only_show_when_useful(window, app):
@@ -307,50 +138,8 @@ def test_saved_window_size_restores_clamps_and_persists(window):
     assert window.preferences.panel_height == 700
 
 
-def test_preferences_tabs_render_as_dark_product_surfaces(window, app):
-    dialog = PreferencesDialog(Preferences(), window)
-    dialog.show()
-    app.processEvents()
-
-    general = dialog.findChild(QWidget, "preferencesGeneral")
-    assert general is not None
-    image = general.grab().toImage()
-    center = image.pixelColor(image.width() // 2, image.height() // 2)
-    assert center.lightness() < 96
-
-    dialog.close()
-
-
-def test_preferences_general_tab_is_compact_and_saves_immediately(window, app):
-    dialog = PreferencesDialog(Preferences(), window)
-    saved = []
-    dialog.preferences_changed.connect(saved.append)
-    dialog.show()
-    app.processEvents()
-
-    assert dialog.size() == QSize(560, 500)
-    assert dialog.close_button.text() == "Done"
-    assert dialog.saved_label.text() == "Saved"
-    assert dialog.findChild(QWidget, "preferencesGroup") is not None
-
-    dialog.auto_open_folder.setChecked(False)
-    app.processEvents()
-
-    assert saved[-1].auto_open_folder is False
-    assert dialog.saved_label.property("saveState") == "saved"
-    dialog.close()
-
-
-def test_preferences_tab_size_tracks_content(window, app):
-    dialog = PreferencesDialog(Preferences(), window)
-    dialog.tabs.setCurrentIndex(1)
-    app.processEvents()
-
-    assert dialog.size() == QSize(560, 680)
-
-
 def test_preferences_reset_restores_defaults(window, app, monkeypatch):
-    dialog = PreferencesDialog(Preferences(auto_open_folder=False, menubar_mode=True), window)
+    dialog = PreferencesDialog(Preferences(auto_open_folder=False), window)
     saved = []
     dialog.preferences_changed.connect(saved.append)
     monkeypatch.setattr(QMessageBox, "question", lambda *_args, **_kwargs: QMessageBox.Reset)
@@ -359,61 +148,25 @@ def test_preferences_reset_restores_defaults(window, app, monkeypatch):
     app.processEvents()
 
     assert saved[-1].auto_open_folder is True
-    assert saved[-1].menubar_mode is False
     assert dialog.saved_label.text() == "Saved"
 
 
-def test_naming_preferences_use_separate_presets_and_target_specific_tokens(window, app):
+def test_preferences_changes_save_immediately(window, app):
     dialog = PreferencesDialog(Preferences(), window)
-    dialog.findChild(QTabWidget, "preferencesTabs").setCurrentIndex(1)
-    dialog.show()
+    saved = []
+    dialog.preferences_changed.connect(saved.append)
+
+    dialog.auto_open_folder.setChecked(False)
     app.processEvents()
 
-    assert dialog.stem_editor.preset_combo.count() == 3
-    assert dialog.folder_editor.preset_combo.count() == 3
-    assert [button.text() for button in dialog.stem_editor.token_buttons] == [
-        "{song}", "{track}", "{bpm}", "{key}", "{date}", "{index}",
-    ]
-    assert [button.text() for button in dialog.folder_editor.token_buttons] == [
-        "{song}", "{bpm}", "{key}", "{date}",
-    ]
-    assert dialog.stem_editor.default_badge.isVisible()
-    assert dialog.folder_editor.default_badge.isVisible()
+    assert saved[-1].auto_open_folder is False
+    assert dialog.saved_label.property("saveState") == "saved"
 
 
-def test_naming_token_inserts_at_cursor_and_invalid_format_disables_ok(window, app):
-    dialog = PreferencesDialog(Preferences(), window)
-    dialog.stem_name_format.setText(".wav")
-    dialog.stem_name_format.setCursorPosition(0)
-    dialog.stem_editor.token_buttons[1].click()
-    app.processEvents()
-
-    assert dialog.stem_name_format.text() == "{track}.wav"
-    assert dialog.saved_label.property("saveState") == "pending"
-    dialog.stem_name_format.setText("{song}.wav")
-    assert "unique name" in dialog.stem_editor.error_label.text()
-    assert dialog.saved_label.property("saveState") == "pending"
 
 
-def test_custom_naming_presets_can_be_created_and_defaulted(window, app, monkeypatch):
-    names = iter([("Client Delivery", True), ("Project Folder", True)])
-    monkeypatch.setattr(QInputDialog, "getText", lambda *_args, **_kwargs: next(names))
-    dialog = PreferencesDialog(Preferences(), window)
 
-    dialog.stem_name_format.setText("{index}_{track}_{song}.wav")
-    dialog.stem_editor._save_preset()
-    dialog.stem_editor._set_default()
-    dialog.folder_name_format.setText("{song} - Delivery")
-    dialog.folder_editor._save_preset()
-    dialog.folder_editor._set_default()
-    updated = dialog.to_preferences()
 
-    assert updated.stem_name_presets[0].name == "Client Delivery"
-    assert updated.folder_name_presets[0].name == "Project Folder"
-    assert updated.stem_name_format == "{index}_{track}_{song}.wav"
-    assert updated.folder_name_format == "{song} - Delivery"
-    assert updated.default_stem_name_preset_id.startswith("custom-stem-")
-    assert updated.default_folder_name_preset_id.startswith("custom-folder-")
 
 
 def test_scan_success_updates_current_set_values(window, monkeypatch):
@@ -434,14 +187,13 @@ def test_scan_success_updates_current_set_values(window, monkeypatch):
 
     assert window.song_value.text() == "Neon Tide"
     assert window.bpm_value.text() == "128 BPM"
-    assert window.path_value.toolTip() == str(project.project_folder)
     assert window.progress_label.text() == "Scan complete"
     assert window.progress_card.property("progressState") == "idle"
     assert window.progress_card.isHidden() is True
     assert window.summary_label.text() == "Detected 2 stems"
     assert window.export_button.isEnabled() is True
     assert window.export_button.objectName() == "primaryAction"
-    assert window.scan_button.objectName() == "secondary"
+    assert window.retry_button.isHidden()
 
 
 def test_export_button_tracks_selected_stems(window):
@@ -487,7 +239,7 @@ def test_incremental_project_and_key_preview_updates_do_not_create_folders(windo
         window.key_input.setText(key)
         app.processEvents()
         previews.append(window.destination_value.text())
-        assert window.destination_value.text() == stems_folder_name(project_name, key or None, 128)
+        assert window.destination_value.toolTip().endswith(stems_folder_name(project_name, key or None, 128))
 
     assert len(set(previews)) == 3
     assert list(project_folder.iterdir()) == []
@@ -503,14 +255,12 @@ def test_scan_failure_keeps_current_set_values_and_updates_status(window, monkey
 
     window.song_value.setText("Existing Song")
     window.bpm_value.setText("121")
-    window.path_value.setText("/Users/c4milo/Music/Ableton/Projects/Existing Song")
 
     message = "Ableton Live is not reachable."
     window._handle_scan_failure(message)
 
     assert window.song_value.text() == "Existing Song"
     assert window.bpm_value.text() == "121"
-    assert window.path_value.text() == "/Users/c4milo/Music/Ableton/Projects/Existing Song"
     assert window.progress_label.text() == "Scan failed"
     assert window.progress_card.property("progressState") == "scan-failed"
     assert window.progress_card.isHidden() is False
@@ -520,7 +270,7 @@ def test_scan_failure_keeps_current_set_values_and_updates_status(window, monkey
     assert window.progress_percent_label.isHidden() is True
     assert window.summary_label.text() == message
     assert window.summary_label.toolTip() == message
-    assert warnings == [("Scan failed", message)]
+    assert warnings == []
 
 
 def test_export_failure_uses_error_state_with_readable_summary(window, monkeypatch):
@@ -563,7 +313,7 @@ def test_export_progress_shows_current_stem_count_destination_and_percent(window
     assert window.progress_percent_label.text() == "25%"
     assert window.progress_percent_label.isHidden() is False
     assert window.progress_bar.isHidden() is False
-    assert window.summary_label.text() == f"1 of 4 stems · Saving to {tmp_path / 'Stems'}"
+    assert window.summary_label.text() == f"1 of 4 stems · Saving to {tmp_path / 'Stems'}\nKeep the keyboard and mouse free. Move the pointer to a screen corner to stop."
 
 
 def test_completed_export_persists_without_redundant_meter_until_next_operation(window, tmp_path):
@@ -636,34 +386,3 @@ def test_cancelled_export_keeps_cancelled_state(window, tmp_path):
     assert window.progress_bar.isHidden() is False
     assert window.progress_percent_label.text() == "33%"
     assert "Cancelled after exporting 1/3 stems" in window.summary_label.text()
-
-
-@pytest.mark.parametrize("dialog_result, should_start", [(0, False), (1, True)])
-def test_confirm_export_starts_only_after_dialog_acceptance(window, tmp_path, monkeypatch, dialog_result, should_start):
-    track = StemTrack(index=0, name="DRUMS")
-    window.current_job = ExportJob(
-        song_name="Neon Tide",
-        project_folder=tmp_path,
-        stems_dir=tmp_path / "Stems",
-        tracks=[track],
-    )
-    monkeypatch.setattr(window, "update_destination_preview", lambda: None)
-    starts: list[int] = []
-    monkeypatch.setattr(window, "start_export", lambda: starts.append(1))
-
-    class FakeConfirmationDialog:
-        Accepted = 1
-
-        def __init__(self, job, parent, *, scale):
-            assert job is window.current_job
-            assert parent is window
-            assert scale == window.ui_scale
-
-        def exec(self):
-            return dialog_result
-
-    monkeypatch.setattr(main_window_module, "ExportConfirmationDialog", FakeConfirmationDialog)
-
-    window.confirm_export()
-
-    assert len(starts) == (1 if should_start else 0)

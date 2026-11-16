@@ -1,0 +1,26 @@
+{
+  "status": "ok",
+  "launch_opacity": 1.0,
+  "footer_y_initial": 642,
+  "footer_y_scanning": 642,
+  "footer_y_during_complete": 642,
+  "footer_y_after_fade": 642,
+  "reused_rows": [
+    "DRUMS",
+    "BASS"
+  ],
+  "removed_rows": [
+    "VOCALS"
+  ],
+  "added_rows": [
+    "SYNTH"
+  ],
+  "progress_bar_value": 1,
+  "progress_bar_display_ratio": 0.3333,
+  "progress_percent_text": "33%",
+  "success_mix": 1.0,
+  "ruler_display_start": 9.0,
+  "ruler_display_end": 40.0,
+  "dialog_opacity": 1.0,
+  "reduced_motion_verified": true
+}

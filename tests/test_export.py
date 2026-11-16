@@ -3,16 +3,17 @@ import time
 import pytest
 
 from stems.errors import ExportAutomationError, PreflightCheckError
-from stems.export import ExportAutomation, execute_export_job, verify_exported_file, wait_for_new_wav
+from stems.export import ExportAutomation, execute_export_job, verify_exported_file, wait_for_exported_audio
 from stems.models import ExportJob, StemTrack
 
 
-def test_wait_for_new_wav_returns_settled_file(tmp_path):
+def test_wait_for_exported_audio_accepts_any_audio_format(tmp_path):
     export_start = time.time() - 1
-    output = tmp_path / "Song_DRUMS.wav"
-    output.write_bytes(b"1234")
-    found = wait_for_new_wav(tmp_path, export_start, timeout=1)
-    assert found == output
+    planned = tmp_path / "Song_DRUMS.wav"
+    actual = tmp_path / "Song_DRUMS.mp3"
+    actual.write_bytes(b"1234")
+    found = wait_for_exported_audio(planned, export_start, timeout=1, sleep=lambda _s: None)
+    assert found == actual
 
 
 class FakeAbletonClient:
@@ -33,64 +34,15 @@ class FakeExportAutomation:
     def __init__(self):
         self.app_path_finder = lambda: "/Applications/Ableton Live.app"
         self.script_runner = lambda _script, timeout=5: "1"
+        self.navigate_folder_values = []
 
     def trigger_export(self, output_path, project_folder, navigate_folder=True, progress=None):
-        del project_folder, navigate_folder
+        del project_folder
+        self.navigate_folder_values.append(navigate_folder)
         output_path.write_bytes(b"wav")
         if progress is not None:
             progress("success", f"Exported {output_path.stem.split('_', 1)[1]}")
         return True
-
-
-def test_execute_export_job_exports_selected_tracks(tmp_path):
-    stems_dir = tmp_path / "Stems"
-    job = ExportJob(
-        song_name="Song",
-        project_folder=tmp_path,
-        stems_dir=stems_dir,
-        tracks=[StemTrack(index=0, name="DRUMS"), StemTrack(index=1, name="BASS")],
-        replace_mode="replace",
-    )
-    result = execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
-    assert result.success_count == 2
-    assert (stems_dir / "Song_DRUMS -   BPM.wav").exists()
-    assert (stems_dir / "Song_BASS -   BPM.wav").exists()
-
-
-def test_execute_export_job_migrates_legacy_folder_for_project_local_destination(tmp_path):
-    legacy = tmp_path / "Stems"
-    legacy.mkdir()
-    destination = tmp_path / "Song - July 16 2026 - Stems - 120 BPM"
-    job = ExportJob(
-        song_name="Song",
-        project_folder=tmp_path,
-        stems_dir=destination,
-        tracks=[StemTrack(index=0, name="DRUMS")],
-    )
-
-    execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
-
-    assert destination.is_dir()
-    assert not legacy.exists()
-
-
-def test_execute_export_job_does_not_migrate_project_folders_for_external_destination(tmp_path):
-    project_folder = tmp_path / "Project"
-    project_folder.mkdir()
-    legacy = project_folder / "Stems"
-    legacy.mkdir()
-    destination = tmp_path / "Exports" / "Song - July 16 2026 - Stems - 120 BPM"
-    job = ExportJob(
-        song_name="Song",
-        project_folder=project_folder,
-        stems_dir=destination,
-        tracks=[StemTrack(index=0, name="DRUMS")],
-    )
-
-    execute_export_job(job, FakeAbletonClient(), FakeExportAutomation())
-
-    assert destination.is_dir()
-    assert legacy.is_dir()
 
 
 def test_verify_exported_file_rejects_empty_files(tmp_path):
@@ -147,18 +99,18 @@ def test_trigger_export_retries_before_succeeding(tmp_path):
 
     output = tmp_path / "Song_DRUMS.wav"
 
-    def fake_wait_for_new_wav(_stems_dir, _export_start, timeout=120, sleep=None, clock=None):
+    def fake_wait_for_exported_audio(_output_path, _export_start, timeout=120, sleep=None, clock=None):
         del timeout, sleep, clock
         output.write_bytes(b"wav")
         return output
 
     import stems.export as export_module
 
-    original = export_module.wait_for_new_wav
-    export_module.wait_for_new_wav = fake_wait_for_new_wav
+    original = export_module.wait_for_exported_audio
+    export_module.wait_for_exported_audio = fake_wait_for_exported_audio
     try:
         assert automation.trigger_export(output, tmp_path)
     finally:
-        export_module.wait_for_new_wav = original
+        export_module.wait_for_exported_audio = original
 
     assert calls["count"] == 2

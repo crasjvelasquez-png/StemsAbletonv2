@@ -3,10 +3,13 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 from .errors import ProjectDetectionError
-from .naming import NEW_STEMS_PATTERN, stems_folder_name
+from .naming import render_name, stems_folder_name
+from .preferences import DEFAULT_FOLDER_NAME_FORMAT
 
 
 logger = logging.getLogger("stems")
@@ -48,7 +51,7 @@ def _find_als_on_disk(name: str, runner=subprocess.run, home: Path | None = None
                 ["find", str(root), "-maxdepth", max_depth, "-name", f"{name}.als"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=30 if root.parent == volumes_root else 10,
             )
         except Exception:
             continue
@@ -119,16 +122,19 @@ def _project_from_backup_candidate(path: Path, name: str) -> Path | None:
     return None
 
 
-def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[Path, str]:
-    song_name, title_errors = _read_live_window_title_with_errors(runner)
+SPOTLIGHT_ATTEMPTS = 3
+SPOTLIGHT_RETRY_DELAY = 1.0
+_LAST_KNOWN_ALS: dict[str, Path] = {}
+_CACHE_LOCK = threading.Lock()
 
-    if not song_name:
-        detail = ""
-        if title_errors:
-            detail = f" Last AppleScript error: {title_errors[-1]}"
-        raise ProjectDetectionError(f"Could not read project name from Ableton's window title.{detail}")
 
-    candidates: list[Path] = []
+def clear_project_cache() -> None:
+    """Clear cached song-to-.als path mappings."""
+    with _CACHE_LOCK:
+        _LAST_KNOWN_ALS.clear()
+
+
+def _spotlight_candidates(song_name: str, runner) -> list[Path]:
     try:
         escaped = song_name.replace('"', '\\"')
         result = runner(
@@ -145,8 +151,84 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[P
                 for path in mdfind_paths
                 if (candidate := _project_from_backup_candidate(path, song_name)) is not None
             ]
+        return candidates
     except Exception:
-        candidates = []
+        return []
+
+
+def _open_file_candidates(song_name: str, runner) -> list[Path]:
+    """Find the set via files Ableton has open (e.g. recorded audio in the project folder).
+
+    Works when Spotlight lags after a save and the disk crawl is too slow on
+    external drives. Only folders that actually contain `<song>.als` count.
+    """
+    try:
+        result = runner(
+            ["lsof", "-w", "-Fn", "-c", "Live", "-c", "Ableton"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+    target = f"{song_name}.als"
+    checked: set[Path] = set()
+    candidates: list[Path] = []
+    for line in result.stdout.splitlines():
+        if not line.startswith("n/"):
+            continue
+        for folder in Path(line[1:]).parents:
+            if folder in checked:
+                break
+            checked.add(folder)
+            if folder == folder.parent:
+                continue
+            candidate = folder / target
+            try:
+                found = candidate.is_file()
+            except OSError:
+                found = False
+            if found and not _bad_path(candidate) and candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
+def get_project_info(runner=subprocess.run, finder=_find_als_on_disk, sleep=time.sleep) -> tuple[Path, str]:
+    song_name, title_errors = _read_live_window_title_with_errors(runner)
+
+    if not song_name:
+        detail = ""
+        if title_errors:
+            detail = f" Last AppleScript error: {title_errors[-1]}"
+        raise ProjectDetectionError(f"Could not read project name from Ableton's window title.{detail}")
+
+    if song_name.lower().startswith("untitled"):
+        raise ProjectDetectionError("This Ableton set hasn't been saved yet.")
+
+    # Spotlight can briefly lose a file while Ableton is saving it. Ask a few
+    # times before falling back to the slow disk search, which can time out on
+    # external drives.
+    candidates: list[Path] = []
+    for attempt in range(SPOTLIGHT_ATTEMPTS):
+        candidates = _spotlight_candidates(song_name, runner)
+        if candidates:
+            break
+        if attempt == 0:
+            with _CACHE_LOCK:
+                cached = _LAST_KNOWN_ALS.get(song_name)
+            if cached is not None:
+                if cached.exists() and not _bad_path(cached):
+                    with _CACHE_LOCK:
+                        _LAST_KNOWN_ALS[song_name] = cached
+                    return cached.parent, cached.stem
+                with _CACHE_LOCK:
+                    if _LAST_KNOWN_ALS.get(song_name) == cached:
+                        _LAST_KNOWN_ALS.pop(song_name, None)
+        if attempt < SPOTLIGHT_ATTEMPTS - 1:
+            sleep(SPOTLIGHT_RETRY_DELAY)
+
+    if not candidates:
+        candidates = _open_file_candidates(song_name, runner)
 
     if not candidates:
         logger.info("  (Spotlight didn't find '%s.als', searching disk...)", song_name)
@@ -157,24 +239,9 @@ def get_project_info(runner=subprocess.run, finder=_find_als_on_disk) -> tuple[P
 
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     als_path = candidates[0]
+    with _CACHE_LOCK:
+        _LAST_KNOWN_ALS[song_name] = als_path
     return als_path.parent, als_path.stem
-
-
-def rename_old_stems_folders(project_folder: Path, new_name: str) -> None:
-    target = project_folder / new_name
-    for item in sorted(project_folder.iterdir(), key=lambda path: path.stat().st_mtime):
-        if not item.is_dir() or item == target:
-            continue
-        if NEW_STEMS_PATTERN.match(item.name):
-            continue
-        if re.search(r"\bstem", item.name, re.IGNORECASE):
-            destination = target
-            suffix = 1
-            while destination.exists():
-                destination = project_folder / f"{new_name} ({suffix})"
-                suffix += 1
-            logger.info("  Renaming: '%s' -> '%s'", item.name, destination.name)
-            item.rename(destination)
 
 
 def get_stems_folder(
@@ -183,8 +250,9 @@ def get_stems_folder(
     key: str | None,
     bpm: int | float | None,
     format_string: str | None = None,
+    artist: str | None = None,
 ) -> Path:
-    stems_dir = stems_folder_path(project_folder, song_name, key, bpm, format_string=format_string)
+    stems_dir = stems_folder_path(project_folder, song_name, key, bpm, format_string=format_string, artist=artist)
     stems_dir.mkdir(parents=True, exist_ok=True)
     return stems_dir
 
@@ -195,6 +263,57 @@ def stems_folder_path(
     key: str | None,
     bpm: int | float | None,
     format_string: str | None = None,
+    artist: str | None = None,
 ) -> Path:
-    folder_name = stems_folder_name(song_name, key, bpm, format_string=format_string)
-    return project_folder / folder_name
+    folder_name = stems_folder_name(song_name, key, bpm, format_string=format_string, artist=artist)
+    desired = project_folder / folder_name
+    if desired.is_dir():
+        return desired
+    existing = find_existing_stems_folder(project_folder, song_name, key, bpm, format_string, artist)
+    return existing or desired
+
+
+def find_existing_stems_folder(
+    project_folder: Path,
+    song_name: str,
+    key: str | None = None,
+    bpm: int | float | None = None,
+    format_string: str | None = None,
+    artist: str | None = None,
+) -> Path | None:
+    """Reuse a stems folder already inside the project folder.
+
+    Only a folder matching the same naming format (date may differ) is reused,
+    so a typed song, artist or key always gets its own folder.
+    """
+    try:
+        folders = [
+            entry for entry in project_folder.iterdir()
+            if entry.is_dir() and not entry.name.startswith(".")
+            and "stem" in entry.name.casefold()
+        ]
+    except OSError:
+        return None
+    if not folders:
+        return None
+
+    marker = "\x00DATE\x00"
+    template = render_name(
+        format_string or DEFAULT_FOLDER_NAME_FORMAT,
+        song=song_name,
+        artist=artist or "",
+        key=key or "",
+        bpm=str(bpm) if bpm is not None else "Unknown BPM",
+        date=marker,
+    )
+    pattern = re.compile(
+        "^" + re.escape(template).replace(re.escape(marker), ".+") + "$", re.IGNORECASE
+    )
+    def newest(candidates: list[Path]) -> Path | None:
+        if not candidates:
+            return None
+        return max(candidates, key=lambda path: path.stat().st_mtime)
+
+    # Only reuse a folder that matches the current song/artist/key/BPM; a loose
+    # match would ignore what the user typed.
+    return newest([f for f in folders if pattern.match(f.name)])

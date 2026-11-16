@@ -27,5 +27,10 @@
 
 ## Verification Notes
 - There is no repo-configured lint, formatter, or typecheck command. The only verified automated check in repo config is `pytest`.
-- Tests are unit-style and heavily fake Ableton/GUI integrations; they verify packaging, naming, detection, state, and export logic without requiring Ableton Live.
+- The current test suite has no E2E coverage. Remaining checks focus on isolated failure paths and contracts that are hard for E2E to cover reliably, using fakes for Ableton/GUI integrations.
 - `build/` and `dist/` are generated PyInstaller outputs. Do not hand-edit them; change sources or `Stems.spec` and rebuild instead.
+
+## Testing Rules
+- Never write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of E2E tests, produce a verifiable and repeatable artifact.
+- If you must test a system in isolation, first write down all the ways it could fail, then write the code.

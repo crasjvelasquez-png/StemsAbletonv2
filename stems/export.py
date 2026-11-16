@@ -7,37 +7,94 @@ from typing import Callable
 
 from .automation import find_ableton_app_path, osascript, wait_for_live_window
 from .errors import DependencyError, ExportAutomationError
-from .models import ExportItemResult, ExportJob, ExportResult
-from .naming import escape_applescript, stem_file_name
-from .project import rename_old_stems_folders
+from .models import ExportItemResult, ExportJob, ExportResult, StemTrack
+from .naming import AUDIO_EXTENSIONS, escape_applescript, stem_file_name
 from .preflight import run_export_preflight
 
 
-EXPORT_TIMEOUT = 120
+EXPORT_TIMEOUT = 180
 RETRY_ATTEMPTS = 2
 ProgressCallback = Callable[[str, str], None]
 CancelCheck = Callable[[], bool]
 
 
-def wait_for_new_wav(
-    stems_dir: Path,
+def audio_base_name(name: str) -> str:
+    """Strip a trailing audio extension (any case). Ableton adds its own."""
+    lowered = name.lower()
+    for ext in AUDIO_EXTENSIONS:
+        if lowered.endswith(ext):
+            return name[: -len(ext)]
+    return name
+
+
+def find_audio_files(folder: Path, base_name: str) -> list[Path]:
+    """Every audio file in folder called base_name, whatever its format."""
+    wanted = base_name.casefold()
+    try:
+        entries = list(folder.iterdir())
+    except OSError:
+        return []
+    return [
+        path for path in entries
+        if path.is_file()
+        and path.suffix.lower() in AUDIO_EXTENSIONS
+        and path.name[: -len(path.suffix)].casefold() == wanted
+    ]
+
+
+def next_free_name(folder: Path, base_name: str) -> str:
+    """First of 'NAME (2)', 'NAME (3)', ... with no audio file of any format."""
+    counter = 2
+    while find_audio_files(folder, f"{base_name} ({counter})"):
+        counter += 1
+    return f"{base_name} ({counter})"
+
+
+def planned_stem_paths(job: ExportJob) -> list[tuple[StemTrack, Path]]:
+    planned = []
+    for position, track in enumerate(job.selected_tracks, start=1):
+        name = stem_file_name(
+            job.custom_song_name or job.song_name,
+            track.name,
+            key=job.key,
+            bpm=job.bpm,
+            index=position,
+            format_string=job.stem_name_format,
+            artist=job.artist,
+        )
+        planned.append((track, job.stems_dir / name))
+    return planned
+
+
+def find_conflicts(job: ExportJob) -> list[StemTrack]:
+    """Selected stems that already have an audio file (any format) in the folder."""
+    return [
+        track for track, path in planned_stem_paths(job)
+        if find_audio_files(path.parent, audio_base_name(path.name))
+    ]
+
+
+def wait_for_exported_audio(
+    output_path: Path,
     export_start: float,
     timeout: int = EXPORT_TIMEOUT,
     clock=time.time,
     sleep=time.sleep,
 ) -> Path | None:
+    """Wait for Ableton to finish writing NAME.<any audio format>."""
+    base = audio_base_name(output_path.name)
     deadline = clock() + timeout
     while clock() < deadline:
-        for file_path in stems_dir.glob("*.wav"):
+        for candidate in find_audio_files(output_path.parent, base):
             try:
-                stat = file_path.stat()
-                if stat.st_mtime >= export_start:
+                stat = candidate.stat()
+                if stat.st_mtime >= export_start and stat.st_size > 0:
                     size_before = stat.st_size
-                    sleep(0.3)
-                    if file_path.stat().st_size == size_before and size_before > 0:
-                        return file_path
+                    sleep(0.5)
+                    if candidate.stat().st_size == size_before:
+                        return candidate
             except FileNotFoundError:
-                continue
+                pass
         sleep(0.2)
     return None
 
@@ -45,10 +102,31 @@ def wait_for_new_wav(
 def verify_exported_file(output_path: Path) -> None:
     if not output_path.exists():
         raise ExportAutomationError(f"Expected exported file was not created: {output_path.name}")
-    if output_path.suffix.lower() != ".wav":
-        raise ExportAutomationError(f"Exported file has unexpected extension: {output_path.name}")
+    if output_path.suffix.lower() not in AUDIO_EXTENSIONS:
+        raise ExportAutomationError(f"Exported file is not audio: {output_path.name}")
     if output_path.stat().st_size <= 0:
         raise ExportAutomationError(f"Exported file is empty: {output_path.name}")
+
+
+SHORT_REASONS = (
+    ("export dialog never opened", "Ableton didn't open Export"),
+    ("save window never appeared", "Save window didn't open"),
+    ("destination folder", "Couldn't pick folder"),
+    ("go to folder", "Couldn't pick folder"),
+    ("filename field", "Couldn't type name"),
+    ("timed out", "No file appeared"),
+    ("empty", "File came out empty"),
+    ("not audio", "Wrong file type"),
+    ("was not created", "No file appeared"),
+)
+
+
+def short_failure_reason(message: str) -> str:
+    lowered = message.lower()
+    for needle, reason in SHORT_REASONS:
+        if needle in lowered:
+            return reason
+    return "Ableton didn't respond"
 
 
 class ExportAutomation:
@@ -87,11 +165,11 @@ class ExportAutomation:
         project_folder: Path,
         navigate_folder: bool = True,
         progress: ProgressCallback | None = None,
-    ) -> bool:
+    ) -> Path:
         del project_folder
         callback = progress or (lambda _event, _message: None)
         pyautogui = self.pyautogui
-        pyautogui.FAILSAFE = False
+        pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
 
         stems_dir = output_path.parent
@@ -116,9 +194,7 @@ class ExportAutomation:
             raise ExportAutomationError("Save window never appeared.")
 
         folder_escaped = escape_applescript(str(stems_dir))
-        name_escaped = escape_applescript(output_path.stem)
-        if output_path.exists():
-            output_path.unlink()
+        name_escaped = escape_applescript(audio_base_name(output_path.name))
 
         go_to_folder_block = ""
         if navigate_folder:
@@ -132,6 +208,9 @@ class ExportAutomation:
                         set s to first sheet of w
                         set value of text field 1 of s to "{folder_escaped}"
                         delay 0.2
+                        if value of text field 1 of s is not "{folder_escaped}" then
+                            return "ERROR: destination folder was not entered correctly"
+                        end if
                         key code 36
                         set gotFolder to true
                         exit repeat
@@ -199,16 +278,11 @@ end tell''',
             raise ExportAutomationError(result or "Export scripting failed.")
 
         callback("wait", "Waiting for exported file")
-        new_file = wait_for_new_wav(stems_dir, export_start, timeout=EXPORT_TIMEOUT, sleep=self.sleep)
+        new_file = wait_for_exported_audio(output_path, export_start, timeout=EXPORT_TIMEOUT, sleep=self.sleep)
         if new_file is None:
-            raise ExportAutomationError("Timed out waiting for exported WAV file.")
-
-        if new_file != output_path:
-            if output_path.exists():
-                output_path.unlink()
-            new_file.rename(output_path)
-        verify_exported_file(output_path)
-        return True
+            raise ExportAutomationError("Timed out waiting for the exported audio file.")
+        verify_exported_file(new_file)
+        return new_file
 
     def trigger_export(
         self,
@@ -216,12 +290,12 @@ end tell''',
         project_folder: Path,
         navigate_folder: bool = True,
         progress: ProgressCallback | None = None,
-    ) -> bool:
+    ) -> Path:
         callback = progress or (lambda _event, _message: None)
         last_error: ExportAutomationError | None = None
         for attempt in range(1, self.retry_attempts + 1):
             try:
-                callback("attempt", f"Export attempt {attempt}/{self.retry_attempts}")
+                callback("attempt", "Preparing stem" if attempt == 1 else "Trying this stem again")
                 return self._trigger_export_once(
                     output_path,
                     project_folder,
@@ -230,7 +304,8 @@ end tell''',
                 )
             except ExportAutomationError as exc:
                 last_error = exc
-                callback("retry", f"Attempt {attempt} failed: {exc}")
+                if attempt < self.retry_attempts:
+                    callback("retry", f"Retrying: {short_failure_reason(str(exc))}")
                 self.reset_export_ui()
         raise ExportAutomationError(
             f"Export failed after {self.retry_attempts} attempts: {last_error}"
@@ -248,8 +323,7 @@ def execute_export_job(
     should_cancel = cancel_check or (lambda: False)
     tracks = job.selected_tracks
     items: list[ExportItemResult] = []
-    first_export = True
-    callback("preflight", "Running export preflight checks")
+    callback("preflight", "Checking Ableton is ready")
     run_export_preflight(
         ableton_client=ableton_client,
         project_folder=job.project_folder,
@@ -257,54 +331,83 @@ def execute_export_job(
         app_path_finder=export_automation.app_path_finder,
         script_runner=export_automation.script_runner,
     )
-    if job.stems_dir.parent.resolve() == job.project_folder.resolve():
-        rename_old_stems_folders(job.project_folder, job.stems_dir.name)
     job.stems_dir.mkdir(parents=True, exist_ok=True)
     original_solos = {track.index: ableton_client.get_track_solo(track.index) for track in tracks}
 
     try:
-        for position, track in enumerate(tracks, start=1):
-            output_path = job.stems_dir / stem_file_name(
-                job.custom_song_name or job.song_name,
-                track.name,
-                key=job.key,
-                bpm=job.bpm,
-                index=position,
-                format_string=job.stem_name_format,
-            )
+        for position, (track, planned_path) in enumerate(planned_stem_paths(job), start=1):
             callback("stem", f"{position}/{len(tracks)} {track.name}")
 
             if should_cancel():
                 callback("cancelled", "Export cancelled before next stem")
                 break
 
-            if job.replace_mode == "keep" and output_path.exists():
-                items.append(ExportItemResult(track=track, output_path=output_path, status="skipped"))
+            base = audio_base_name(planned_path.name)
+            existing = find_audio_files(job.stems_dir, base)
+            if existing and job.replace_mode == "keep":
+                items.append(ExportItemResult(track=track, output_path=existing[0], status="skipped"))
                 callback("skipped", f"Skipped {track.name}")
                 continue
+            if existing and job.replace_mode == "keep_both":
+                base = next_free_name(job.stems_dir, base)
+                existing = []
+            output_path = job.stems_dir / (base + ".wav")  # Ableton picks the real extension.
 
             for selected_track in tracks:
                 ableton_client.set_track_solo(selected_track.index, False)
             ableton_client.set_track_solo(track.index, True)
             time.sleep(0.3)
 
+            # Replace: park old files aside so the old take survives a failed export.
+            parked = _park_files(existing)
             try:
-                export_automation.trigger_export(
+                exported = export_automation.trigger_export(
                     output_path,
                     job.project_folder,
-                    navigate_folder=first_export,
+                    navigate_folder=True,
                     progress=callback,
                 )
             except ExportAutomationError as exc:
+                _restore_parked(parked)
                 items.append(ExportItemResult(track=track, output_path=output_path, status="failed", error=str(exc)))
-                callback("failed", f"{track.name}: {exc}")
+                callback("failed", f"{track.name}: {short_failure_reason(str(exc))}")
             else:
-                items.append(ExportItemResult(track=track, output_path=output_path, status="success"))
+                _discard_parked(parked)
+                final_path = exported if isinstance(exported, Path) else output_path
+                items.append(ExportItemResult(track=track, output_path=final_path, status="success"))
                 callback("success", f"Exported {track.name}")
-                first_export = False
             time.sleep(0.5)
     finally:
         for track in tracks:
             ableton_client.set_track_solo(track.index, original_solos[track.index])
 
     return ExportResult(job=job, items=items)
+
+
+def _park_files(paths: list[Path]) -> list[tuple[Path, Path]]:
+    parked = []
+    for path in paths:
+        hidden = path.with_name(f".{path.name}.stems-old")
+        try:
+            path.replace(hidden)
+        except OSError:
+            continue
+        parked.append((path, hidden))
+    return parked
+
+
+def _restore_parked(parked: list[tuple[Path, Path]]) -> None:
+    for original, hidden in parked:
+        try:
+            if not original.exists():
+                hidden.replace(original)
+        except OSError:
+            pass
+
+
+def _discard_parked(parked: list[tuple[Path, Path]]) -> None:
+    for _original, hidden in parked:
+        try:
+            hidden.unlink()
+        except OSError:
+            pass
