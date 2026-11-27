@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 import time
 
 
@@ -77,3 +79,18 @@ def wait_for_live_window(
             return True
         sleep(0.2)
     return False
+
+
+def bring_process_to_front(pid: int | None = None, script_runner=osascript) -> bool:
+    """Bring this app's process to the front on macOS via System Events."""
+    if sys.platform != "darwin":
+        return False
+    target_pid = os.getpid() if pid is None else pid
+    try:
+        result = script_runner(
+            f'tell application "System Events" to set frontmost of first process whose unix id is {target_pid} to true',
+            timeout=3,
+        )
+    except Exception:
+        return False
+    return not result.startswith("ERROR")

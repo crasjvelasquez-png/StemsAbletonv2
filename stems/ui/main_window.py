@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..ableton import AbletonClient
+from ..automation import bring_process_to_front
 from ..models import DEFAULT_RANGE_BARS, ExportJob, ExportRange, ExportResult, StemTrack
 from ..osc import OSCGateway
 from ..export import find_conflicts, short_failure_reason
@@ -1755,9 +1756,31 @@ class MainWindow(QMainWindow):
         self._pending_export = True
         self.scan_current_set()
 
+    def _set_export_always_on_top(self, enabled: bool) -> None:
+        is_on_top = bool(self.windowFlags() & Qt.WindowStaysOnTopHint)
+        if is_on_top == enabled:
+            return
+        was_visible = self.isVisible()
+        geometry = self.geometry()
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, enabled)
+        if was_visible:
+            self.setGeometry(geometry)
+            self.show()
+            if enabled:
+                self.raise_()
+
+    def _bring_to_front(self) -> None:
+        self._last_scan = time.monotonic()
+        self.raise_()
+        self.activateWindow()
+        if self.isVisible():
+            bring_process_to_front()
+
     def start_export(self) -> None:
         if self.current_job is None or not self.current_job.selected_tracks or self.export_thread is not None:
             return
+
+        self._set_export_always_on_top(True)
 
         for item in self.item_by_track_name.values():
             row = self.track_list.itemWidget(item)
@@ -1799,7 +1822,9 @@ class MainWindow(QMainWindow):
             self.progress_label.setText("Export cancelled")
         else:
             self._set_progress_state("export-in-progress")
-        if event == "stem":
+        if event == "wait":
+            self._bring_to_front()
+        elif event == "stem":
             parts, _, track_name = message.partition(" ")
             current_index = int(parts.split("/")[0])
             self.progress_bar.setValue(current_index - 1)
@@ -1963,6 +1988,8 @@ class MainWindow(QMainWindow):
             self.progress_label.setText("Export complete")
         self._set_progress_detail(summary)
         self._set_open_available(True)
+        self._set_export_always_on_top(False)
+        self._bring_to_front()
         if self.preferences.auto_open_folder:
             self.open_export_folder()
 
@@ -1971,6 +1998,8 @@ class MainWindow(QMainWindow):
         self._set_progress_state("export-failed")
         self.progress_label.setText("Export failed")
         self._set_progress_detail(message)
+        self._set_export_always_on_top(False)
+        self._bring_to_front()
         QMessageBox.warning(self, "Export failed", message)
 
     def _cleanup_export_thread(self, *_args) -> None:
@@ -1979,6 +2008,8 @@ class MainWindow(QMainWindow):
             self.export_thread.wait()
         self.export_thread = None
         self.export_worker = None
+        self._set_export_always_on_top(False)
+        self._last_scan = time.monotonic()
         if self._closing:
             QTimer.singleShot(0, self.close)
         self.retry_button.setEnabled(True)

@@ -1,0 +1,42 @@
+{
+  "success_timeline": [
+    {
+      "action": "activate_ableton",
+      "stays_on_top": true
+    },
+    {
+      "action": "activate_ableton",
+      "stays_on_top": true
+    },
+    {
+      "action": "bring_to_front",
+      "stays_on_top": true,
+      "progress_state": "export-in-progress"
+    },
+    {
+      "action": "bring_to_front",
+      "stays_on_top": true,
+      "progress_state": "export-in-progress"
+    },
+    {
+      "action": "bring_to_front",
+      "stays_on_top": false,
+      "progress_state": "export-complete"
+    },
+    {
+      "action": "open_folder",
+      "cmd": [
+        "open",
+        "/Users/c4milo/.t3/userdata/antigravity-tmp/ac0a3dfd6ddd/run-6SKGtA/pytest-of-c4milo/pytest-1/test_export_stays_on_top_and_r0/ok/Song Project/Song - Stems - 120"
+      ],
+      "stays_on_top": false
+    }
+  ],
+  "failed_timeline": [
+    {
+      "action": "bring_to_front",
+      "stays_on_top": false,
+      "progress_state": "export-failed"
+    }
+  ]
+}
