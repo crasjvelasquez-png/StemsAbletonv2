@@ -31,7 +31,7 @@ Failure modes considered before implementation:
 10. Ruler scale exceeding 200 bars:
     Ruler total must be max(200, end_bar) rounded up to a multiple of 8 (e.g. bar 230 -> 232).
 11. MainWindow banner label, confirm dialog text, and state fakes:
-    Banner label must read "Range Selected", confirm_export() must open ExportConfirmDialog
+    Banner label must read "Export range", confirm_export() must open ExportConfirmDialog
     with non-verbose title ("Export N stems?") and concise range ("Bars X to Y · N bars"),
     and UI must tolerate fakes lacking `export_range`, default to "Bars 1 to 200" when None,
     and reset stale range on scan failure.
@@ -387,7 +387,7 @@ def test_main_window_displays_range_banner_handles_failure_and_confirms_range(qt
 
         assert window.export_range_banner.objectName() == "exportRangeBanner"
         assert window.export_range_banner.property("rangeMode") is None
-        assert window.export_range_label.text() == "Range Selected"
+        assert window.export_range_label.text() == "Export range"
         assert window.export_range_headline.objectName() == "exportRangeHeadline"
         assert window.export_range_headline.text() == "Bars 17 to 48"
         assert window.export_range_meta.text() == "32 bars · 1:04"

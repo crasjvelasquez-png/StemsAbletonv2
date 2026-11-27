@@ -1,11 +1,13 @@
-"""Finder-style folder trail: [folder icon] Name  ›  [folder icon] Name."""
+"""Finder-style folder trail: [folder icon] Name  ›  Name."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QFileIconProvider, QLabel, QLayout, QSizePolicy, QWidget
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLayout, QSizePolicy, QWidget
+
+from .theme import DESIGN_TOKENS
 
 ICON_POINTS = 16
 
@@ -23,7 +25,7 @@ def friendly_parts(path: str | Path) -> list[str]:
 
 
 class _FlowLayout(QLayout):
-    def __init__(self, parent: QWidget | None = None, h_spacing: int = 4, v_spacing: int = 6):
+    def __init__(self, parent: QWidget | None = None, h_spacing: int = 4, v_spacing: int = 4):
         super().__init__(parent)
         self._items = []
         self._h = h_spacing
@@ -106,40 +108,64 @@ class PathTrail(QWidget):
         self._plain = " › ".join(parts) + (" · existing folder" if existing else "")
         for i, name in enumerate(parts):
             if i:
-                chevron = QLabel("\u25B6\uFE0E")
+                chevron = QLabel("\u203A")
                 chevron.setObjectName("pathTrailChevron")
                 chevron.setAlignment(Qt.AlignCenter)
                 chevron.setFixedHeight(ICON_POINTS)
                 self._flow.addWidget(chevron)
-            self._flow.addWidget(self._crumb(name, last=i == len(parts) - 1))
+            self._flow.addWidget(self._crumb(name, last=i == len(parts) - 1, show_icon=i == 0))
         if existing:
             note = QLabel("Existing folder")
             note.setObjectName("pathTrailNote")
             self._flow.addWidget(note)
 
-    def _crumb(self, name: str, *, last: bool) -> QWidget:
+    def _crumb(self, name: str, *, last: bool, show_icon: bool = False) -> QWidget:
         box = QWidget()
         box.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        from PySide6.QtWidgets import QHBoxLayout
-
         lay = QHBoxLayout(box)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(5)
-        icon = QLabel()
-        icon.setPixmap(self._folder_pixmap())
-        icon.setFixedSize(ICON_POINTS, ICON_POINTS)
+        lay.setSpacing(4)
+        if show_icon:
+            icon = QLabel()
+            icon.setPixmap(self._folder_pixmap())
+            icon.setFixedSize(ICON_POINTS, ICON_POINTS)
+            lay.addWidget(icon)
         text = QLabel(name)
         text.setObjectName("pathTrailLast" if last else "pathTrailName")
-        lay.addWidget(icon)
         lay.addWidget(text)
         return box
 
-    def _folder_pixmap(self):
+    def _folder_pixmap(self) -> QPixmap:
         if self._icon is None:
-            pm = QFileIconProvider().icon(QFileIconProvider.IconType.Folder).pixmap(
-                QSize(ICON_POINTS * 2, ICON_POINTS * 2)
+            pm = QPixmap(ICON_POINTS * 2, ICON_POINTS * 2)
+            pm.setDevicePixelRatio(2.0)
+            pm.fill(Qt.transparent)
+            painter = QPainter(pm)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(
+                QPen(
+                    QColor(DESIGN_TOKENS["text_muted"]),
+                    1.5,
+                    Qt.SolidLine,
+                    Qt.RoundCap,
+                    Qt.RoundJoin,
+                )
             )
-            pm.setDevicePixelRatio(2)
+            painter.setBrush(Qt.NoBrush)
+            path = QPainterPath()
+            path.moveTo(2.0, 4.5)
+            path.quadTo(2.0, 3.0, 3.5, 3.0)
+            path.lineTo(6.3, 3.0)
+            path.lineTo(7.8, 4.5)
+            path.lineTo(12.5, 4.5)
+            path.quadTo(14.0, 4.5, 14.0, 6.0)
+            path.lineTo(14.0, 11.5)
+            path.quadTo(14.0, 13.0, 12.5, 13.0)
+            path.lineTo(3.5, 13.0)
+            path.quadTo(2.0, 13.0, 2.0, 11.5)
+            path.closeSubpath()
+            painter.drawPath(path)
+            painter.end()
             self._icon = pm
         return self._icon
 

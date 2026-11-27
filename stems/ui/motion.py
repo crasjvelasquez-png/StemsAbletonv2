@@ -248,34 +248,3 @@ def fade_widget(
     setattr(widget, "_fade_anim", anim)
     anim.start()
     return anim
-
-
-def stop_window_fade(window: QWidget) -> None:
-    anim = getattr(window, "_window_opacity_anim", None)
-    if anim is not None and anim.state() == QPropertyAnimation.Running:
-        anim.stop()
-
-
-def fade_window_opacity(
-    window: QWidget,
-    target_opacity: float,
-    duration_ms: int,
-    *,
-    start_opacity: float | None = None,
-    animate: bool = True,
-) -> QPropertyAnimation | None:
-    stop_window_fade(window)
-    dur = effective_duration(duration_ms) if animate else 0
-    if dur <= 0:
-        window.setWindowOpacity(target_opacity)
-        return None
-    if start_opacity is not None:
-        window.setWindowOpacity(start_opacity)
-    anim = QPropertyAnimation(window, b"windowOpacity", window)
-    anim.setDuration(dur)
-    anim.setStartValue(window.windowOpacity())
-    anim.setEndValue(target_opacity)
-    anim.setEasingCurve(QEasingCurve.OutCubic)
-    setattr(window, "_window_opacity_anim", anim)
-    anim.start()
-    return anim

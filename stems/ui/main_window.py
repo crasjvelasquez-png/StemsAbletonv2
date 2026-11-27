@@ -62,11 +62,10 @@ from .motion import (
     FloatTween,
     effective_duration,
     fade_widget,
-    fade_window_opacity,
+    is_reduced_motion,
     lerp_color,
     parse_css_color,
     stop_fade_widget,
-    stop_window_fade,
 )
 from .path_trail import PathTrail
 from .preferences_dialog import PreferencesDialog
@@ -104,8 +103,8 @@ UI_BASE_SIZES = {
     "export_top_spacing": 20,
     "footer_margins": (24, 16, 24, 16),
     "footer_spacing": 12,
-    "progress_spacing": 6,
-    "progress_header_spacing": 10,
+    "progress_spacing": 8,
+    "progress_header_spacing": 12,
     "progress_percent_width": 36,
     "progress_bar_height": 2,
     "action_spacing": 8,
@@ -140,17 +139,18 @@ def _app_icon() -> QIcon:
 
 
 def _gear_icon(size: int = 16) -> QIcon:
-    pixmap = QPixmap(size, size)
+    pixmap = QPixmap(size * 2, size * 2)
+    pixmap.setDevicePixelRatio(2.0)
     pixmap.fill(Qt.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
 
-    color = QColor("#a1a1a6")
+    color = QColor(DESIGN_TOKENS["text_muted"])
     center = QPointF(size / 2.0, size / 2.0)
     scale = size / 16.0
 
     # 8 radial gear teeth
-    painter.setPen(QPen(color, 1.6 * scale, Qt.SolidLine, Qt.RoundCap))
+    painter.setPen(QPen(color, 1.5 * scale, Qt.SolidLine, Qt.RoundCap))
     painter.setBrush(Qt.NoBrush)
     inner_r = 4.7 * scale
     outer_r = 6.5 * scale
@@ -164,7 +164,7 @@ def _gear_icon(size: int = 16) -> QIcon:
         )
 
     # Outer gear ring with a transparent inner hole
-    painter.setPen(QPen(color, 1.7 * scale))
+    painter.setPen(QPen(color, 1.5 * scale))
     painter.setBrush(Qt.NoBrush)
     ring_r = 4.1 * scale
     painter.drawEllipse(center, ring_r, ring_r)
@@ -210,7 +210,9 @@ class StemTrackRow(QWidget):
         self._display_index = display_index
         self._clip_color = self._resolve_clip_color(track, display_index)
         self._clip_luminance = _relative_luminance(self._clip_color)
-        self._ink_on_clip = QColor("#141415" if self._clip_luminance > 0.179 else "#f4f4f5")
+        self._ink_on_clip = QColor(
+            DESIGN_TOKENS["clip_ink_dark"] if self._clip_luminance > 0.179 else DESIGN_TOKENS["clip_ink_light"]
+        )
         self._hovered = False
         self._animating = False
         self._lane_height = int(sizes["stem_lane_height"])
@@ -276,7 +278,9 @@ class StemTrackRow(QWidget):
         self._display_index = display_index
         self._clip_color = self._resolve_clip_color(track, display_index)
         self._clip_luminance = _relative_luminance(self._clip_color)
-        self._ink_on_clip = QColor("#141415" if self._clip_luminance > 0.179 else "#f4f4f5")
+        self._ink_on_clip = QColor(
+            DESIGN_TOKENS["clip_ink_dark"] if self._clip_luminance > 0.179 else DESIGN_TOKENS["clip_ink_light"]
+        )
         self.status_label.setStyleSheet(
             f'QLabel#stemRowStatus[statusState="success"] {{ color: {self._ink_on_clip.name()}; }}'
         )
@@ -343,7 +347,7 @@ class StemTrackRow(QWidget):
         self._animating = active
         if active:
             if self.isVisible():
-                if not self._anim_timer.isActive():
+                if not is_reduced_motion() and not self._anim_timer.isActive():
                     self._anim_timer.start()
                 self._hatch_alpha.animate_to(1.0, DURATION_FAST, animate=True)
             else:
@@ -428,7 +432,7 @@ class StemTrackRow(QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt override name
         super().showEvent(event)
-        if self._animating and not self._anim_timer.isActive():
+        if self._animating and not is_reduced_motion() and not self._anim_timer.isActive():
             self._anim_timer.start()
 
     def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
@@ -510,8 +514,7 @@ class StemTrackRow(QWidget):
             painter.setPen(Qt.NoPen)
             hatch = QColor(self._clip_color)
             base_alpha = 0.55 if very_dark_clip else 0.30
-            pulse = 0.75 + 0.25 * math.sin(2.0 * math.pi * time.monotonic() / 1.6)
-            hatch.setAlphaF(base_alpha * pulse * hatch_t * (1.0 - success_t))
+            hatch.setAlphaF(base_alpha * hatch_t * (1.0 - success_t))
             painter.setBrush(hatch)
             painter.rotate(-45)
             diag = int(lane_w + lane_h) + 40
@@ -530,22 +533,13 @@ class StemTrackRow(QWidget):
         # Left tab
         tab_rect = QRectF(0.0, 0.0, tab_w, lane_h)
         if check_t < 0.999:
-            inset = 0.75
-            t_rect = QRectF(inset, inset, tab_w - inset, lane_h - 2.0 * inset)
-            r = max(0.0, radius - inset)
-            tab_path = QPainterPath()
-            tab_path.moveTo(t_rect.right(), t_rect.top())
-            tab_path.lineTo(t_rect.left() + r, t_rect.top())
-            tab_path.quadTo(t_rect.left(), t_rect.top(), t_rect.left(), t_rect.top() + r)
-            tab_path.lineTo(t_rect.left(), t_rect.bottom() - r)
-            tab_path.quadTo(t_rect.left(), t_rect.bottom(), t_rect.left() + r, t_rect.bottom())
-            tab_path.lineTo(t_rect.right(), t_rect.bottom())
-            tab_path.closeSubpath()
-            border_color = QColor("#343437")
-            border_color.setAlphaF(1.0 - check_t)
-            painter.setPen(QPen(border_color, 1.5))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(tab_path)
+            tab_bg = QColor(DESIGN_TOKENS["panel_soft"])
+            tab_bg.setAlphaF(1.0 - check_t)
+            painter.fillRect(tab_rect, tab_bg)
+            divider_color = parse_css_color(DESIGN_TOKENS["border"])
+            divider_color.setAlphaF(divider_color.alphaF() * (1.0 - check_t))
+            painter.setPen(QPen(divider_color, 1.0))
+            painter.drawLine(QPointF(tab_w - 0.5, 0.0), QPointF(tab_w - 0.5, lane_h))
 
         if check_t > 0.001:
             tab_fill = QColor(self._clip_color)
@@ -569,11 +563,11 @@ class StemTrackRow(QWidget):
                 painter.setBrush(Qt.NoBrush)
                 painter.drawPath(tab_path)
 
-        idx_color = lerp_color(QColor("#85858b"), self._ink_on_clip, check_t)
+        idx_color = lerp_color(QColor(DESIGN_TOKENS["text_faint"]), self._ink_on_clip, check_t)
         idx_font = QFont()
-        idx_font.setFamilies(["Menlo", "monospace"])
+        idx_font.setFamilies(["SF Mono", "Menlo", "monospace"])
         idx_font.setPixelSize(12)
-        idx_font.setWeight(QFont.DemiBold)
+        idx_font.setWeight(QFont.Medium)
         painter.setFont(idx_font)
         painter.setPen(idx_color)
         painter.drawText(tab_rect, Qt.AlignCenter, str(self._display_index))
@@ -584,7 +578,9 @@ class StemTrackRow(QWidget):
         name_font.setPixelSize(14)
         name_font.setWeight(QFont.Medium)
         painter.setFont(name_font)
-        base_name_color = lerp_color(QColor("#85858b"), QColor("#ededed"), check_t)
+        base_name_color = lerp_color(
+            QColor(DESIGN_TOKENS["text_faint"]), QColor(DESIGN_TOKENS["text"]), check_t
+        )
         name_color = lerp_color(base_name_color, self._ink_on_clip, success_t)
         name_left = tab_w + 16.0
         right_reserved = (self.status_label.sizeHint().width() + 28.0) if self.status_label.isVisible() else 16.0
@@ -599,9 +595,19 @@ class StemTrackRow(QWidget):
 
         painter.restore()
 
+        hairline_rect = QRectF(0.5, 0.5, lane_w - 1.0, lane_h - 1.0)
+        border_token = (
+            DESIGN_TOKENS["border_strong"]
+            if (self._hovered and self.isEnabled())
+            else DESIGN_TOKENS["border"]
+        )
+        painter.setPen(QPen(parse_css_color(border_token), 1.0))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(hairline_rect, radius - 0.5, radius - 0.5)
+
         if self.hasFocus():
             focus_rect = QRectF(0.75, 0.75, lane_w - 1.5, lane_h - 1.5)
-            painter.setPen(QPen(QColor("#ededed"), 1.5))
+            painter.setPen(QPen(QColor(DESIGN_TOKENS["accent"]), 1.5))
             painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(focus_rect, radius - 0.75, radius - 0.75)
 
@@ -625,15 +631,24 @@ class RangeRuler(QWidget):
         self.start_bar = start_bar
         self.end_bar = end_bar
         self.total_bars = max(1, total_bars)
+        self._has_range = True
         self._display_start = FloatTween(self, float(start_bar), lambda _v: self.update())
         self._display_end = FloatTween(self, float(end_bar), lambda _v: self.update())
         self.setFixedHeight(40)
 
-    def set_range(self, start_bar: int, end_bar: int, total_bars: int) -> None:
+    def set_range(
+        self,
+        start_bar: int,
+        end_bar: int,
+        total_bars: int,
+        *,
+        has_range: bool = True,
+    ) -> None:
         range_changed = start_bar != self.start_bar or end_bar != self.end_bar
         self.start_bar = start_bar
         self.end_bar = end_bar
         self.total_bars = max(1, total_bars)
+        self._has_range = has_range
         if range_changed:
             animate = self.isVisible()
             self._display_start.animate_to(float(start_bar), DURATION_BASE, animate=animate)
@@ -663,7 +678,7 @@ class RangeRuler(QWidget):
             return (bar - 1.0) / total * w
 
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#2a2a2d"))
+        painter.setBrush(QColor(DESIGN_TOKENS["panel_soft_hover"]))
         painter.drawRoundedRect(QRectF(0, y, w, 8), 4, 4)
 
         start = max(1.0, min(self._display_start.value, float(total)))
@@ -671,15 +686,32 @@ class RangeRuler(QWidget):
         x_start = bar_x(start)
         x_end = bar_x(end + 1.0)
         highlight_w = max(2.0, min(float(w) - x_start, x_end - x_start))
-        painter.setBrush(QColor(DESIGN_TOKENS["text"]))
+        span_color = (
+            QColor(DESIGN_TOKENS["text"])
+            if self._has_range
+            else parse_css_color(DESIGN_TOKENS["ruler_muted"])
+        )
+        painter.setBrush(span_color)
         painter.drawRoundedRect(QRectF(x_start, y, highlight_w, 8), 4, 4)
 
-        font = QFont("Menlo")
+        x_start_cap = max(0.0, min(float(w) - 2.0, x_start))
+        x_end_cap = max(x_start_cap, min(float(w) - 2.0, x_end - 2.0))
+        painter.fillRect(QRectF(x_start_cap, y - 2, 2.0, 12.0), span_color)
+        painter.fillRect(QRectF(x_end_cap, y - 2, 2.0, 12.0), span_color)
+
+        font = QFont()
+        font.setFamilies(["SF Mono", "Menlo", "monospace"])
         font.setPixelSize(11)
         painter.setFont(font)
         faint_color = QColor(DESIGN_TOKENS["text_faint"])
-        for bar in range(1, total + 1, 4):
-            major = (bar - 1) % 24 == 0
+        major_step = 64
+        for candidate in (4, 8, 16, 32, 64):
+            if (candidate / total) * w >= 48.0:
+                major_step = candidate
+                break
+        minor_step = max(1, major_step // 4)
+        for bar in range(1, total + 1, minor_step):
+            major = (bar - 1) % major_step == 0
             tick_color = QColor(faint_color)
             tick_color.setAlpha(200 if major else 90)
             painter.setPen(QPen(tick_color, 1))
@@ -773,7 +805,7 @@ class ExportConfirmDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Confirm Export")
         self.setModal(True)
-        self.setFixedWidth(440)
+        self.setFixedWidth(480)
         self.setStyleSheet(stylesheet_for_scale(1.0))
         self.chosen_mode: str | None = None
 
@@ -789,7 +821,7 @@ class ExportConfirmDialog(QDialog):
         content.setObjectName("exportConfirmContent")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(24, 20, 24, 20)
-        content_layout.setSpacing(14)
+        content_layout.setSpacing(16)
 
         self.title_label = QLabel(f"Export {track_count} {stem_word}?")
         self.title_label.setObjectName("dialogTitle")
@@ -799,8 +831,8 @@ class ExportConfirmDialog(QDialog):
         self.summary_card.setObjectName("exportConfirmCard")
         self.summary_card.setAttribute(Qt.WA_StyledBackground, True)
         card_layout = QVBoxLayout(self.summary_card)
-        card_layout.setContentsMargins(14, 12, 14, 12)
-        card_layout.setSpacing(10)
+        card_layout.setContentsMargins(16, 12, 16, 12)
+        card_layout.setSpacing(12)
 
         range_row = QHBoxLayout()
         range_row.setContentsMargins(0, 0, 0, 0)
@@ -860,13 +892,13 @@ class ExportConfirmDialog(QDialog):
         self.footer.setObjectName("footerDock")
         self.footer.setAttribute(Qt.WA_StyledBackground, True)
         footer_layout = QHBoxLayout(self.footer)
-        footer_layout.setContentsMargins(24, 14, 24, 14)
+        footer_layout.setContentsMargins(24, 16, 24, 16)
         footer_layout.setSpacing(8)
 
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setObjectName("secondary")
         self.cancel_button.setProperty("actionBarButton", True)
-        self.cancel_button.setFixedHeight(34)
+        self.cancel_button.setFixedHeight(36)
         self.cancel_button.setAutoDefault(False)
         self.cancel_button.clicked.connect(self.reject)
 
@@ -881,9 +913,9 @@ class ExportConfirmDialog(QDialog):
                 ("Replace", "replace", True),
             ):
                 btn = QPushButton(label)
-                btn.setObjectName("primaryAction" if is_primary else "secondary")
+                btn.setObjectName("dangerAction" if is_primary else "secondary")
                 btn.setProperty("actionBarButton", True)
-                btn.setFixedHeight(34)
+                btn.setFixedHeight(36)
                 btn.setDefault(is_primary)
                 btn.setAutoDefault(is_primary)
                 btn.clicked.connect(lambda _checked=False, m=mode_value: self._choose(m))
@@ -896,7 +928,7 @@ class ExportConfirmDialog(QDialog):
             export_btn = QPushButton("Export")
             export_btn.setObjectName("primaryAction")
             export_btn.setProperty("actionBarButton", True)
-            export_btn.setFixedHeight(34)
+            export_btn.setFixedHeight(36)
             export_btn.setMinimumWidth(88)
             export_btn.setDefault(True)
             export_btn.setAutoDefault(True)
@@ -907,22 +939,14 @@ class ExportConfirmDialog(QDialog):
 
         root_layout.addWidget(self.footer)
         self.adjustSize()
+        if conflict_count > 0:
+            self.cancel_button.setFocus()
+        else:
+            self.default_action_button.setFocus()
 
     def _choose(self, mode: str) -> None:
         self.chosen_mode = mode
         self.accept()
-
-    def showEvent(self, event) -> None:  # noqa: N802 - Qt override name
-        super().showEvent(event)
-        if effective_duration(DURATION_DIALOG) > 0:
-            fade_window_opacity(self, 1.0, DURATION_DIALOG, start_opacity=0.0)
-        else:
-            self.setWindowOpacity(1.0)
-
-    def hideEvent(self, event) -> None:  # noqa: N802 - Qt override name
-        stop_window_fade(self)
-        self.setWindowOpacity(1.0)
-        super().hideEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -1030,7 +1054,7 @@ class MainWindow(QMainWindow):
         self.export_range_banner = banner
 
         layout = QVBoxLayout(banner)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
         top_row = QHBoxLayout()
@@ -1039,9 +1063,9 @@ class MainWindow(QMainWindow):
 
         left_col = QVBoxLayout()
         left_col.setContentsMargins(0, 0, 0, 0)
-        left_col.setSpacing(2)
+        left_col.setSpacing(4)
 
-        self.export_range_label = QLabel("Range Selected")
+        self.export_range_label = QLabel("Export range")
         self.export_range_label.setObjectName("exportRangeLabel")
 
         self.export_range_headline = QLabel()
@@ -1053,10 +1077,10 @@ class MainWindow(QMainWindow):
 
         self.export_range_meta = QLabel()
         self.export_range_meta.setObjectName("exportRangeMeta")
-        self.export_range_meta.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.export_range_meta.setAlignment(Qt.AlignRight | Qt.AlignBottom)
 
         top_row.addLayout(left_col, 1)
-        top_row.addWidget(self.export_range_meta, 0, Qt.AlignRight | Qt.AlignVCenter)
+        top_row.addWidget(self.export_range_meta, 0, Qt.AlignRight | Qt.AlignBottom)
 
         self.export_range_ruler = RangeRuler()
 
@@ -1067,7 +1091,8 @@ class MainWindow(QMainWindow):
 
     def _update_export_range_banner(self, export_range: ExportRange | None) -> None:
         default_start, default_end = DEFAULT_RANGE_BARS
-        if export_range is None or export_range.length_beats <= 0:
+        has_range = export_range is not None and export_range.length_beats > 0
+        if not has_range:
             start_bar, end_bar = default_start, default_end
             headline = f"Bars {default_start} to {default_end}"
             detail = f"{default_end - default_start + 1} bars"
@@ -1078,7 +1103,12 @@ class MainWindow(QMainWindow):
 
         self.export_range_headline.setText(headline)
         self.export_range_meta.setText(detail)
-        self.export_range_ruler.set_range(start_bar, end_bar, _ruler_total_bars(end_bar))
+        self.export_range_ruler.set_range(
+            start_bar,
+            end_bar,
+            _ruler_total_bars(end_bar),
+            has_range=has_range,
+        )
 
     def _build_header_section(self) -> QWidget:
         section = QWidget()
@@ -1219,16 +1249,17 @@ class MainWindow(QMainWindow):
             (dest_label, self.destination_control),
         )
         self._export_pair_widgets = tuple(
-            self._wrap_field_pair(label, control, spacing=6 if index < 3 else 4)
+            self._wrap_field_pair(label, control, spacing=8 if index < 3 else 4)
             for index, (label, control) in enumerate(self.export_field_pairs)
         )
         self._arrange_export_fields(compact=False)
+        self._export_pair_widgets[3].setVisible(False)
         return section
 
     @staticmethod
     def _apply_placeholder_color(line_edit: QLineEdit) -> None:
         palette = line_edit.palette()
-        palette.setColor(QPalette.PlaceholderText, QColor("#85858b"))
+        palette.setColor(QPalette.PlaceholderText, QColor(DESIGN_TOKENS["text_faint"]))
         line_edit.setPalette(palette)
 
     @staticmethod
@@ -1313,7 +1344,7 @@ class MainWindow(QMainWindow):
 
         self.export_button = QPushButton("Export stems")
         self.export_button.setObjectName("secondary")
-        self.export_button.setToolTip("Export selected stems and overwrite matching files.")
+        self.export_button.setToolTip("Export selected stems")
         self.export_button.clicked.connect(self.confirm_export)
         self.export_button.setEnabled(False)
 
@@ -1378,12 +1409,12 @@ class MainWindow(QMainWindow):
             self.export_options_layout.removeWidget(widget)
         project_pair, key_pair, artist_pair, dest_pair = self._export_pair_widgets
         if compact:
-            self.export_options_layout.addWidget(project_pair, 0, 0)
+            self.export_options_layout.addWidget(project_pair, 0, 0, 1, 2)
             self.export_options_layout.addWidget(key_pair, 1, 0)
-            self.export_options_layout.addWidget(artist_pair, 2, 0)
-            self.export_options_layout.addWidget(dest_pair, 3, 0)
+            self.export_options_layout.addWidget(artist_pair, 1, 1)
+            self.export_options_layout.addWidget(dest_pair, 2, 0, 1, 2)
             self.export_options_layout.setColumnStretch(0, 1)
-            self.export_options_layout.setColumnStretch(1, 0)
+            self.export_options_layout.setColumnStretch(1, 1)
             self.export_options_layout.setColumnStretch(2, 0)
         else:
             self.export_options_layout.addWidget(project_pair, 0, 0)
@@ -1538,7 +1569,7 @@ class MainWindow(QMainWindow):
             self.artist_input.clear()
         self.song_value.setText(project.song_name)
         self.project_name_input.setPlaceholderText(project.song_name)
-        self.bpm_value.setText(f"{project.bpm} BPM" if project.bpm is not None else "Tempo unknown")
+        self.bpm_value.setText(f"{project.bpm:g} BPM" if project.bpm is not None else "Tempo unknown")
         self._update_export_range_banner(getattr(state, "export_range", None))
         track_tuple = self._track_signature(state.detected_tracks)
         if self._tracks_shown_for_scan != track_tuple:
@@ -2064,8 +2095,6 @@ class MainWindow(QMainWindow):
             self.progress_card.setVisible(False)
         else:
             self._progress_opacity.setOpacity(1.0)
-        stop_window_fade(self)
-        self.setWindowOpacity(1.0)
         self.export_range_ruler.stop_animations()
         if hasattr(self.progress_bar, "stop_animations"):
             self.progress_bar.stop_animations()
