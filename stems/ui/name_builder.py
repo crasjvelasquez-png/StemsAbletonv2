@@ -18,7 +18,7 @@ from ..naming import TOKEN_PATTERN
 class FlowLayout(QLayout):
     """Left-to-right layout that wraps onto new rows when out of width."""
 
-    def __init__(self, parent=None, spacing: int = 6):
+    def __init__(self, parent=None, spacing: int = 8):
         super().__init__(parent)
         self._items = []
         self._spacing = spacing
@@ -85,7 +85,7 @@ class NameBuilder(QWidget):
     ``self.line`` is the single source of truth; blocks are a view of it.
     """
 
-    BLOCK_HEIGHT = 26
+    BLOCK_HEIGHT = 28
 
     def __init__(self, kind: str, tokens, labels: dict, examples: dict, initial: str = "", parent=None):
         super().__init__(parent)
@@ -100,7 +100,7 @@ class NameBuilder(QWidget):
         self.line.hide()
 
         self._strip = QWidget()
-        self._flow = FlowLayout(self._strip, spacing=6)
+        self._flow = FlowLayout(self._strip, spacing=8)
         self._strip.setMinimumWidth(420)
         self._strip.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
 
@@ -118,7 +118,7 @@ class NameBuilder(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
         layout.addWidget(self._strip)
 
         self._buttons: list[QPushButton] = []
@@ -185,9 +185,9 @@ class NameBuilder(QWidget):
                 label = self.labels.get(value, value.title())
                 button = QPushButton(label)
                 button.setObjectName("nameBlockToken")
-                button.setToolTip(f"{label}: e.g. {self.examples.get(value, value)}. Click to move or remove.")
+                button.setToolTip(f"{label}: e.g. {self.examples.get(value, value)}. Click to move or remove")
             else:
-                shown = "space" if value.strip() == "" else value.replace(" - ", " \u2013 ").strip()
+                shown = "Space" if value.strip() == "" else value.replace(" - ", " \u2013 ").strip()
                 if shown in ("-", "- ", " -"):
                     shown = "\u2013"
                 elif shown.startswith("- "):
@@ -196,7 +196,7 @@ class NameBuilder(QWidget):
                     shown = shown[:-1] + "\u2013"
                 button = QPushButton(shown)
                 button.setObjectName("nameBlockText")
-                button.setToolTip("Your own text. Click to change, move or remove.")
+                button.setToolTip("Your own text. Click to change, move or remove")
             button.setFocusPolicy(Qt.NoFocus)
             button.setCursor(Qt.PointingHandCursor)
             button.setFixedHeight(self.BLOCK_HEIGHT)

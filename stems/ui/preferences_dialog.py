@@ -57,14 +57,14 @@ class PreferencesDialog(QDialog):
         content.setObjectName("preferencesContent")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(24, 20, 24, 20)
-        content_layout.setSpacing(20)
+        content_layout.setSpacing(16)
 
         header_layout = QVBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(4)
         title_label = QLabel("Preferences")
         title_label.setObjectName("dialogTitle")
-        subtitle_label = QLabel("Choose how your stems are named.")
+        subtitle_label = QLabel("Choose how your stems are named")
         subtitle_label.setObjectName("prefsSubtitle")
         header_layout.addWidget(title_label)
         header_layout.addWidget(subtitle_label)
@@ -73,8 +73,8 @@ class PreferencesDialog(QDialog):
         self.stem_choice, self.stem_format, self.stem_error = None, None, None
         self.folder_choice, self.folder_format, self.folder_error = None, None, None
         sections = (
-            ("File Names", "stem", BUILTIN_STEM_NAMING_PRESETS, preferences.stem_name_format, STEM_NAME_TOKENS),
-            ("Folder Names", "folder", BUILTIN_FOLDER_NAMING_PRESETS, preferences.folder_name_format, FOLDER_NAME_TOKENS),
+            ("File names", "stem", BUILTIN_STEM_NAMING_PRESETS, preferences.stem_name_format, STEM_NAME_TOKENS),
+            ("Folder names", "folder", BUILTIN_FOLDER_NAMING_PRESETS, preferences.folder_name_format, FOLDER_NAME_TOKENS),
         )
         for title, kind, presets, current, tokens in sections:
             combo, line, error = self._build_naming_section(content_layout, title, kind, presets, current, tokens)
@@ -94,7 +94,7 @@ class PreferencesDialog(QDialog):
         self.auto_open_folder = QCheckBox()
         self.auto_open_folder.setChecked(preferences.auto_open_folder)
 
-        card, card_layout = self._group(content_layout, "After Export")
+        card, card_layout = self._group(content_layout, "After export")
         card_layout.addLayout(self._row("When stems already exist", self.replace_choice))
         card_layout.addWidget(self._separator())
         card_layout.addLayout(self._row("Open the folder after export", self.auto_open_folder))
@@ -106,7 +106,7 @@ class PreferencesDialog(QDialog):
         footer.setObjectName("footerDock")
         footer.setAttribute(Qt.WA_StyledBackground, True)
         footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(24, 14, 24, 14)
+        footer_layout.setContentsMargins(24, 16, 24, 16)
         footer_layout.setSpacing(12)
 
         self.reset_button = QPushButton("Reset to Defaults")
@@ -117,6 +117,7 @@ class PreferencesDialog(QDialog):
         self.saved_label = QLabel("Saved")
         self.saved_label.setObjectName("preferencesSavedLabel")
         self.saved_label.setProperty("saveState", "saved")
+        self.saved_label.hide()
 
         self.close_button = QPushButton("Done")
         self.close_button.setObjectName("primaryAction")
@@ -136,11 +137,12 @@ class PreferencesDialog(QDialog):
         self.auto_open_folder.toggled.connect(self._save_immediately)
         self.replace_choice.currentIndexChanged.connect(self._save_immediately)
         self._update_preview()
+        self.close_button.setFocus()
 
     @staticmethod
     def _style_combo(combo):
         combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        combo.setFixedSize(200, 28)
+        combo.setFixedSize(200, 32)
 
     @staticmethod
     def _separator():
@@ -166,16 +168,16 @@ class PreferencesDialog(QDialog):
     def _group(parent_layout, title):
         box = QVBoxLayout()
         box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(6)
+        box.setSpacing(8)
         heading = QLabel(title)
         heading.setObjectName("prefsGroupTitle")
-        heading.setContentsMargins(2, 0, 0, 0)
+        heading.setContentsMargins(0, 0, 0, 0)
         card = QWidget()
         card.setObjectName("prefsGroup")
         card.setAttribute(Qt.WA_StyledBackground, True)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(14, 12, 14, 12)
-        card_layout.setSpacing(10)
+        card_layout.setContentsMargins(16, 12, 16, 12)
+        card_layout.setSpacing(12)
         box.addWidget(heading)
         box.addWidget(card)
         parent_layout.addLayout(box)
@@ -185,7 +187,7 @@ class PreferencesDialog(QDialog):
         combo = QComboBox()
         for preset in presets:
             combo.addItem(preset.name, preset.format_string)
-        combo.addItem("My Own", None)
+        combo.addItem("Custom", None)
         index = combo.findData(current)
         combo.setCurrentIndex(index if index >= 0 else combo.count() - 1)
         self._style_combo(combo)
@@ -215,7 +217,7 @@ class PreferencesDialog(QDialog):
 
         example = QVBoxLayout()
         example.setContentsMargins(0, 0, 0, 0)
-        example.setSpacing(2)
+        example.setSpacing(4)
         example.addWidget(caption)
         example.addWidget(looks_like)
         footer = QHBoxLayout()
@@ -276,6 +278,7 @@ class PreferencesDialog(QDialog):
         self._update_preview()
         self.saved_label.setProperty("saveState", "saved")
         self.saved_label.setText("Saved")
+        self.saved_label.show()
         self.preferences_changed.emit(deepcopy(self.preferences))
 
     def _reset_to_defaults(self):

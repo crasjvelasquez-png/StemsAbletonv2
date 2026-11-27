@@ -55,7 +55,7 @@ def test_preset_rebuilds_blocks_and_edits_switch_to_my_own(dialog, app):
 
     dialog.stem_builder.add_text("_")
     dialog.stem_builder.add_token("bpm")
-    assert dialog.stem_choice.currentText() == "My Own"
+    assert dialog.stem_choice.currentText() == "Custom"
     assert saved[-1].stem_name_format == "{song}_{track}_{bpm}"
 
 
