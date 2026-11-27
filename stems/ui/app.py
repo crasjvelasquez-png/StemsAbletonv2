@@ -21,6 +21,8 @@ def main() -> int:
     if effective_duration(DURATION_REBUILD) > 0:
         window.setWindowOpacity(0.0)
     window.show()
+    window.raise_()
+    window.activateWindow()
     fade_window_opacity(window, 1.0, DURATION_REBUILD)
     return app.exec()
 
